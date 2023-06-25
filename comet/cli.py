@@ -44,11 +44,13 @@ def train(config):
     result = "Hyperparameters:\n"
     for k, v in train_configs.namespace().__dict__.items():
         result += "{0:30}| {1}\n".format(k, v)
-    click.secho(f"{result}", fg="blue", nl=False)
+    click.secho(f"{result}", fg="green", nl=False)
 
     # Build Model
     try:
         model_config = str2model[train_configs.model].ModelConfig(yaml_file)
+        print(str2model[train_configs.model].ModelConfig)
+        print(model_config.namespace()) 
         model = str2model[train_configs.model](model_config.namespace())
     except KeyError:
         raise Exception(f"Invalid model {train_configs.model}!")

@@ -86,6 +86,19 @@ class ModelBase(ptl.LightningModule):
         """
 
         model: str = None
+        # TODO: rankerモデルだとこれが必要．要調査
+        # 【ここから】
+        encoder_learning_rate: float = 1e-06
+        layerwise_decay: float = 1.0
+        layer: str = "mix"
+        scalar_mix_dropout: float = 0.0
+
+        loss: str = "mse"
+        hidden_sizes: str = "1024"
+        activations: str = "Tanh"
+        dropout: float = 0.1
+        final_activation: str = "Sigmoid"
+        # 【ここまで】
 
         # Training details
         batch_size: int = 8
