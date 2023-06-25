@@ -11,7 +11,7 @@ from typing import Dict, List
 import torch
 import torch.nn as nn
 
-from comet.tokenizers import TextEncoderBase
+from comet.tokenizers_ import TextEncoderBase
 
 
 class Encoder(nn.Module):

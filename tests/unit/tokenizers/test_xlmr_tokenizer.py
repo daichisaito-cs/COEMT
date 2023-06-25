@@ -4,7 +4,7 @@ import unittest
 
 import torch
 
-from comet.tokenizers import XLMRTextEncoder
+from comet.tokenizers_ import XLMRTextEncoder
 from fairseq.models.roberta import XLMRModel
 from torchnlp.download import download_file_maybe_extract
 

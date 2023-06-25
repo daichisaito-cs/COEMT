@@ -12,7 +12,7 @@ from typing import Dict
 import torch
 
 from comet.models.encoders.encoder_base import Encoder
-from comet.tokenizers import XLMRTextEncoder
+from comet.tokenizers_ import XLMRTextEncoder
 from fairseq.models.roberta import XLMRModel
 from torchnlp.download import download_file_maybe_extract
 from torchnlp.utils import lengths_to_mask

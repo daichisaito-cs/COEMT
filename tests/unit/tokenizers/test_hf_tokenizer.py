@@ -4,7 +4,7 @@ import unittest
 import torch
 from transformers import AutoTokenizer
 
-from comet.tokenizers import HFTextEncoder
+from comet.tokenizers_ import HFTextEncoder
 
 
 class TestHFTextEncoder(unittest.TestCase):

@@ -11,7 +11,7 @@ import torch
 from transformers import AutoModel
 
 from comet.models.encoders.encoder_base import Encoder
-from comet.tokenizers import HFTextEncoder
+from comet.tokenizers_ import HFTextEncoder
 from torchnlp.utils import lengths_to_mask
 
 

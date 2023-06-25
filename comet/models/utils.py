@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import torch
 
-from comet.tokenizers import TextEncoderBase
+from comet.tokenizers_ import TextEncoderBase
 
 
 def average_pooling(
