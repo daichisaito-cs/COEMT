@@ -167,8 +167,13 @@ def score(model, source, hypothesis, reference, cuda, batch_size, to_json):
     required=True,
 )
 def download(data, model, saving_path):
+    print("Download ...")
+    print(data,model)
     for d in data:
         download_corpus(d, saving_path)
 
     for m in model:
         download_model(m, saving_path)
+
+if __name__ == '__main__':
+    comet()
