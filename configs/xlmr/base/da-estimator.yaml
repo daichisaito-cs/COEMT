@@ -23,7 +23,7 @@ nr_frozen_epochs: 0.4
 scheduler: constant
 
 train_path: data/wmt-metrics/scores-17-19.csv
-val_path: data/wmt-metrics/dev-19.csv
+val_path: data/wmt-metrics/test19-scores.csv
 
 model: CometEstimator
 loss: mse
