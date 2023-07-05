@@ -50,7 +50,7 @@ class ShichimiDataset(Dataset):
         return data
 
     def _split(self,dataset_type,data):
-        train_r, val_r, test_r = 0.8, 0.1, 0.1
+        train_r, val_r, test_r = 0.5, 0.5, 0.0
         if dataset_type == "train":
             left = len(data) * 0
             right = len(data) * train_r
@@ -107,11 +107,11 @@ def main():
             img_to_tuples.setdefault(img_id,[]).append((mos, hypo, refs))
 
         tuple_dataset = []
-        for tpl in img_to_tuples.values():
-            tpl.sort()
-            for i, (crr_mos, crr_hypo, refs) in enumerate(tpl):
+        for imgid, tpls in img_to_tuples.items():
+            for i, (crr_mos, crr_hypo, refs) in enumerate(tpls):
                 N = len(refs)
                 tuple_dataset.append({
+                    "imgid": imgid,
                     "src": refs[i%N],
                     "ref": refs[(i+1)%N], 
                     "mt": crr_hypo,
@@ -120,9 +120,9 @@ def main():
             
         print(f"new({split_name}): {len(tuple_dataset)}")
         with open(f"../data/shichimi_{split_name}_da.csv", "w") as f:
-            f.write("src,mt,ref,score\n")
+            f.write("imgid,src,mt,ref,score\n")
             for tpl in tuple_dataset:
-                f.write(f"\"{tpl['src']}\",\"{tpl['mt']}\",\"{tpl['ref']}\",\"{tpl['score']}\"\n")
+                f.write(f"{tpl['imgid']},\"{tpl['src']}\",\"{tpl['mt']}\",\"{tpl['ref']}\",{tpl['score']}\n")
 
 if __name__ == "__main__":
     main()
