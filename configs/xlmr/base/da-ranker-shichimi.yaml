@@ -7,7 +7,7 @@ min_delta: 0.0
 save_top_k: 2
 save_weights_only: True 
 min_epochs: 1
-max_epochs: 2
+max_epochs: 100
 gradient_clip_val: 1.0
 gpus: 1
 batch_size: 8
@@ -19,8 +19,8 @@ learning_rate: 1.0e-05
 layerwise_decay: 0.95
 scheduler: constant
 
-train_path: data/wmt-metrics/relative-ranks-17-18.csv
-val_path: data/wmt-metrics/test19-relative-ranks.csv
+train_path: data/shichimi_train.csv
+val_path: data/shichimi_val.csv
 
 model: CometRanker
 nr_frozen_epochs: 0
