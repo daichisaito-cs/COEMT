@@ -19,7 +19,7 @@ from comet.models.utils import move_to_cuda
 from torchnlp.utils import collate_tensors
 
 
-class CometRanker(RankingBase):
+class CometRanker(RankingBase): # extends ptl.LightningModule
     """
     Comet Ranker class that uses a pretrained encoder to extract features
     from the sequences and then passes those features through a Triplet Margin Loss.
@@ -60,17 +60,26 @@ class CometRanker(RankingBase):
             )
         }
 
-    def compute_loss(self, model_out: Dict[str, torch.Tensor], *args) -> torch.Tensor:
+    def compute_loss(self, model_out: Dict[str, torch.Tensor], *args) -> torch.Tensor: 
         """
+        # forwardの結果がmodel_outに入っているのでlossを計算
         Computes Triplet Margin Loss for both the reference and the source.
 
         :param model_out: model specific output with src_anchor, ref_anchor, pos and neg
             sentence embeddings.
         """
+
+        # 参考
+        #     "src_sentemb": self.get_sentence_embedding(src_tokens, src_lengths),
+        #     "ref_sentemb": self.get_sentence_embedding(ref_tokens, ref_lengths),
+        #     "pos_sentemb": self.get_sentence_embedding(pos_tokens, pos_lengths),
+        #     "neg_sentemb": self.get_sentence_embedding(neg_tokens, neg_lengths),
+        
         ref_anchor = model_out["ref_sentemb"]
         src_anchor = model_out["src_sentemb"]
         positive = model_out["pos_sentemb"]
         negative = model_out["neg_sentemb"]
+
         return self.loss(src_anchor, positive, negative) + self.loss(
             ref_anchor, positive, negative
         )
