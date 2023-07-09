@@ -62,19 +62,22 @@ class CometEstimator(Estimator):
             else self.encoder.output_units * 2 * 6
         )
 
-        self.ff = FeedForward(
-            in_dim=input_emb_sz,
-            hidden_sizes=self.hparams.hidden_sizes,
-            activations=self.hparams.activations,
-            dropout=self.hparams.dropout,
-            final_activation=(
-                self.hparams.final_activation
-                if hasattr(
-                    self.hparams, "final_activation"
-                )  # compatability with older checkpoints!
-                else "Sigmoid"
+        self.ff = torch.nn.Sequential(*[
+            FeedForward(
+                in_dim=input_emb_sz,
+                hidden_sizes=self.hparams.hidden_sizes,
+                activations=self.hparams.activations,
+                dropout=self.hparams.dropout,
+                final_activation=(
+                    self.hparams.final_activation
+                    if hasattr(
+                        self.hparams, "final_activation"
+                    )  # compatability with older checkpoints!
+                    else "Sigmoid"
+                ),
             ),
-        )
+            torch.nn.Sigmoid()
+        ])
 
     def configure_optimizers(
         self,
@@ -182,14 +185,14 @@ class CometEstimator(Estimator):
                 self.hparams, "switch_prob"
             )  # compatability with older checkpoints!
             or self.hparams.switch_prob <= 0.0
-        ):
+        ):  
             embedded_sequences = torch.cat(
                 (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
             )
             score = self.ff(embedded_sequences)
 
             if (alt_tokens is not None) and (alt_lengths is not None):
-
+                assert False
                 alt_sentemb = self.get_sentence_embedding(alt_tokens, alt_lengths)
 
                 diff_alt = torch.abs(mt_sentemb - alt_sentemb)
