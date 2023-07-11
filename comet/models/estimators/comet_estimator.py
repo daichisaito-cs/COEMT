@@ -2,7 +2,7 @@
 r"""
 Comet Estimator Model
 ================================
-    Comet Estimator predicts a quality score for the 
+    Comet Estimator predicts a quality score for the
     hyphotesis (e.g: the MT text) by looking at reference, source and MT.
 """
 import random
@@ -10,12 +10,14 @@ from argparse import Namespace
 from typing import Dict, List, Tuple, Union
 
 import torch
+from torchvision.transforms import ToTensor
 
 from comet.models.estimators.estimator_base import Estimator
 from comet.modules.feedforward import FeedForward
 from comet.modules.scalar_mix import ScalarMixWithDropout
 from torchnlp.utils import collate_tensors
 
+import clip
 
 class CometEstimator(Estimator):
     """
@@ -134,6 +136,7 @@ class CometEstimator(Estimator):
         else:
             inputs = {**src_inputs, **mt_inputs, **ref_inputs}
 
+        inputs["imgs"] = sample["img"]
         if inference:
             return inputs
 
@@ -148,6 +151,7 @@ class CometEstimator(Estimator):
         src_lengths: torch.tensor,
         mt_lengths: torch.tensor,
         ref_lengths: torch.tensor,
+        imgs: torch.tensor,
         alt_tokens: torch.tensor = None,
         alt_lengths: torch.tensor = None,
         **kwargs
@@ -167,6 +171,16 @@ class CometEstimator(Estimator):
 
         :return: Dictionary with model outputs to be passed to the loss function.
         """
+        # Clip model の読み込み
+        clip_model, preprocess = clip.load("ViT-B/32")
+        clip_model = clip_model.cuda()
+        imgs = [preprocess(img).unsqueeze(0).cuda() for img in imgs]
+        imgs = torch.cat(imgs, dim=0)
+
+        # 画像データをclipで変換
+        with torch.no_grad():
+            img_emb = clip_model.encode_image(imgs)
+
         src_sentemb = self.get_sentence_embedding(src_tokens, src_lengths)
         mt_sentemb = self.get_sentence_embedding(mt_tokens, mt_lengths)
         ref_sentemb = self.get_sentence_embedding(ref_tokens, ref_lengths)

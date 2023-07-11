@@ -2,19 +2,21 @@
 r"""
 Model Base
 ==============
-    Abstract base class used to build new modules inside COMET. 
+    Abstract base class used to build new modules inside COMET.
     This class is just an extention of PyTorch Lightning main module:
     https://pytorch-lightning.readthedocs.io/en/0.8.4/lightning-module.html
 """
 from argparse import Namespace
 from os import path
+import os
 from typing import Dict, Generator, List, Tuple, Union
 
 import click
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader, RandomSampler, Subset
+from torch.utils.data import DataLoader, RandomSampler, Subset, Dataset
+from PIL import Image
 
 import pytorch_lightning as ptl
 from comet.models.encoders import Encoder, str2encoder
@@ -123,6 +125,9 @@ class ModelBase(ptl.LightningModule):
         train_path: str = None
         val_path: str = None
         test_path: str = None
+        train_img_dir_path: str = None
+        val_img_dir_path: str = None
+        test_img_dir_path: str = None
         loader_workers: int = 8
 
         monitor: str = "kendall"
@@ -443,12 +448,16 @@ class ModelBase(ptl.LightningModule):
         self.train_dataset = self.read_csv(self.hparams.train_path)
         self.val_dataset = self.read_csv(self.hparams.val_path)
 
+        self.train_dataset = ShichimiDataset(self.train_dataset, self.hparams.train_img_dir_path)
+        self.val_dataset = ShichimiDataset(self.val_dataset, self.hparams.val_img_dir_path)
+
         # Always validate the model with 2k examples from training to control overfit.
         train_subset = np.random.choice(a=len(self.train_dataset), size=2000)
         self.train_subset = Subset(self.train_dataset, train_subset)
 
         if self.hparams.test_path:
             self.test_dataset = self.read_csv(self.hparams.test_path)
+            self.test_dataset = ShichimiDataset(self.test_dataset, self.hparams.test_img_dir_path)
 
     def train_dataloader(self) -> DataLoader:
         """ Function that loads the train set. """
@@ -485,3 +494,29 @@ class ModelBase(ptl.LightningModule):
             collate_fn=self.prepare_sample,
             num_workers=self.hparams.loader_workers,
         )
+
+class ShichimiDataset(Dataset):
+    def __init__(self, dataset, img_dir_path):
+        self.dataset = dataset
+        self.img_dir_path = img_dir_path
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        # Get image from df
+
+        imgid = self.dataset[idx]["imgid"]
+        img_name = path.join(self.img_dir_path, f"{imgid}.jpg")
+
+        # Get label from  df
+        labels = self.dataset[idx]
+
+        # print(labels)
+
+        # Open image file
+        img = Image.open(img_name).convert('RGB')
+
+        labels["img"] = img
+
+        return labels

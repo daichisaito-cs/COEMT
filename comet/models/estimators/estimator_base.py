@@ -94,11 +94,12 @@ class Estimator(ModelBase):
         :return: List of records as dictionaries
         """
         df = pd.read_csv(path)
-        df = df[["src", "mt", "ref", "score"]]
+        df = df[["src", "mt", "ref", "score", "imgid"]]
         df["src"] = df["src"].astype(str)
         df["mt"] = df["mt"].astype(str)
         df["ref"] = df["ref"].astype(str)
         df["score"] = df["score"].astype(float)
+        df["imgid"] = df["imgid"].astype(str)
         return df.to_dict("records")
 
     def compute_loss(
@@ -146,7 +147,7 @@ class Estimator(ModelBase):
             tokens = tokens[:, : lengths.max()]
 
         encoder_out = self.encoder(tokens, lengths)
-        
+
         if self.scalar_mix:
             embeddings = self.scalar_mix(encoder_out["all_layers"], encoder_out["mask"])
 
@@ -155,7 +156,7 @@ class Estimator(ModelBase):
 
         else:
             raise Exception("Invalid model layer {}.".format(self.layer))
-        
+
         if self.hparams.pool == "default":
             sentemb = encoder_out["sentemb"]
 
