@@ -500,6 +500,9 @@ class ShichimiDataset(Dataset):
         self.dataset = dataset
         self.img_dir_path = img_dir_path
 
+        # Filter out entries with broken image files
+        self.dataset = [entry for entry in dataset if self.is_image_ok(path.join(img_dir_path, f"{entry['imgid']}.jpg"))]
+
     def __len__(self):
         return len(self.dataset)
 
@@ -520,3 +523,13 @@ class ShichimiDataset(Dataset):
         labels["img"] = img
 
         return labels
+
+    @staticmethod
+    def is_image_ok(img_path):
+        # Try to open the image file
+        try:
+            img = Image.open(img_path)
+            img.verify()
+            return True
+        except (IOError, SyntaxError) as e:
+            return False

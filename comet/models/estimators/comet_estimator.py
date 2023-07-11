@@ -59,9 +59,9 @@ class CometEstimator(Estimator):
             )
 
         input_emb_sz = (
-            self.encoder.output_units * 6
+            self.encoder.output_units * 7
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * 6
+            else self.encoder.output_units * 2 * 7
         )
 
         self.ff = FeedForward(
@@ -77,6 +77,8 @@ class CometEstimator(Estimator):
                 else "Sigmoid"
             ),
         )
+
+        self.clip_linear = torch.nn.Linear(512,768)
 
     def configure_optimizers(
         self,
@@ -179,12 +181,13 @@ class CometEstimator(Estimator):
 
         # 画像データをclipで変換
         with torch.no_grad():
-            img_emb = clip_model.encode_image(imgs)
+            img_emb = clip_model.encode_image(imgs).float()
 
         src_sentemb = self.get_sentence_embedding(src_tokens, src_lengths)
         mt_sentemb = self.get_sentence_embedding(mt_tokens, mt_lengths)
         ref_sentemb = self.get_sentence_embedding(ref_tokens, ref_lengths)
 
+        img_emb = self.clip_linear(img_emb)
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
         diff_src = torch.abs(mt_sentemb - src_sentemb)
 
@@ -198,7 +201,7 @@ class CometEstimator(Estimator):
             or self.hparams.switch_prob <= 0.0
         ):
             embedded_sequences = torch.cat(
-                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
+                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src, img_emb), dim=1
             )
             score = self.ff(embedded_sequences)
 
@@ -222,12 +225,12 @@ class CometEstimator(Estimator):
 
             if switch:
                 embedded_sequences = torch.cat(
-                    (mt_sentemb, ref_sentemb, prod_src, diff_src, prod_ref, diff_ref),
+                    (mt_sentemb, ref_sentemb, prod_src, diff_src, prod_ref, diff_ref,img_emb),
                     dim=1,
                 )
             else:
                 embedded_sequences = torch.cat(
-                    (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src),
+                    (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,img_emb),
                     dim=1,
                 )
             return {"score": self.ff(embedded_sequences)}
