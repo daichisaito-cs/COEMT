@@ -18,6 +18,7 @@ from comet.modules.scalar_mix import ScalarMixWithDropout
 from torchnlp.utils import collate_tensors
 
 import clip
+from transformers import CLIPProcessor, CLIPModel
 
 class CometEstimator(Estimator):
     """
@@ -82,6 +83,10 @@ class CometEstimator(Estimator):
         ])
 
         self.clip_linear = torch.nn.Linear(512,768)
+        self.clip_model, self.preprocess = clip.load("ViT-B/16")
+
+        self.clip_new_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K")
+        self.new_processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16)
 
     def configure_optimizers(
         self,
@@ -141,7 +146,14 @@ class CometEstimator(Estimator):
         else:
             inputs = {**src_inputs, **mt_inputs, **ref_inputs}
 
+        # i = self.new_processor(sample["src"], images=sample["img"], return_tensors="pt", padding=True)
+        # i = {k : v.cuda() for k,v in i.items() }
+        # o = self.clip_new_model(**i)
         inputs["imgs"] = sample["img"]
+        inputs["src"] = sample["src"]
+        # inputs["imgs"] = o.image_embeds
+
+        # inputs["imgs"] = sample["img"]
         if inference:
             return inputs
 
@@ -156,6 +168,7 @@ class CometEstimator(Estimator):
         src_lengths: torch.tensor,
         mt_lengths: torch.tensor,
         ref_lengths: torch.tensor,
+        src: torch.tensor,
         imgs: torch.tensor,
         alt_tokens: torch.tensor = None,
         alt_lengths: torch.tensor = None,
@@ -176,19 +189,27 @@ class CometEstimator(Estimator):
 
         :return: Dictionary with model outputs to be passed to the loss function.
         """
-        # Clip model の読み込み
-        clip_model, preprocess = clip.load("ViT-B/32")
-        clip_model = clip_model.cuda()
-        imgs = [preprocess(img).unsqueeze(0).cuda() for img in imgs]
+
+        imgs = [self.preprocess(img).unsqueeze(0).cuda() for img in imgs]
         imgs = torch.cat(imgs, dim=0)
 
-        # 画像データをclipで変換
+        # S画像データをclipで変換
         with torch.no_grad():
-            img_emb = clip_model.encode_image(imgs).float()
+            img_emb = self.clip_model.encode_image(imgs).float()
+
+        # i = self.new_processor(src, images=img, return_tensors="pt", padding=True)
+        # i = {k : v.cuda() for k,v in i.items() }
+        # o = self.clip_new_model(**i)
+        # img_emb = o.image_embeds
 
         src_sentemb = self.get_sentence_embedding(src_tokens, src_lengths)
         mt_sentemb = self.get_sentence_embedding(mt_tokens, mt_lengths)
         ref_sentemb = self.get_sentence_embedding(ref_tokens, ref_lengths)
+
+        # B, D = img_emb.shape
+        # img_emb_new = torch.zeros((B, 768), device=img_emb.device, dtype=img_emb.dtype)
+        # img_emb_new[:, :D] = img_emb
+        # img_emb = img_emb_new
 
         img_emb = self.clip_linear(img_emb)
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
@@ -202,7 +223,7 @@ class CometEstimator(Estimator):
                 self.hparams, "switch_prob"
             )  # compatability with older checkpoints!
             or self.hparams.switch_prob <= 0.0
-        ):  
+        ):
             embedded_sequences = torch.cat(
                 (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src, img_emb), dim=1
             )

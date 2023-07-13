@@ -98,7 +98,7 @@ class Estimator(ModelBase):
         df["src"] = df["src"].astype(str)
         df["mt"] = df["mt"].astype(str)
         df["ref"] = df["ref"].astype(str)
-        df["score"] = df["score"].astype(float)
+        df["score"] = df["score"].astype(float) / 5.
         df["imgid"] = df["imgid"].astype(str)
         return df.to_dict("records")
 
