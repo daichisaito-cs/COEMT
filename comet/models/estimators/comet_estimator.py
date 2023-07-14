@@ -10,7 +10,7 @@ from argparse import Namespace
 from typing import Dict, List, Tuple, Union
 
 import torch
-from torchvision.transforms import ToTensor
+# from torchvision.transforms import ToTensor
 
 from comet.models.estimators.estimator_base import Estimator
 from comet.modules.feedforward import FeedForward
@@ -18,7 +18,7 @@ from comet.modules.scalar_mix import ScalarMixWithDropout
 from torchnlp.utils import collate_tensors
 
 import clip
-from transformers import CLIPProcessor, CLIPModel
+# from transformers import CLIPProcessor, CLIPModel
 
 class CometEstimator(Estimator):
     """
@@ -85,8 +85,8 @@ class CometEstimator(Estimator):
         self.clip_linear = torch.nn.Linear(512,768)
         self.clip_model, self.preprocess = clip.load("ViT-B/16")
 
-        self.clip_new_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K")
-        self.new_processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16)
+        # self.clip_new_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K")
+        # self.new_processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16)
 
     def configure_optimizers(
         self,

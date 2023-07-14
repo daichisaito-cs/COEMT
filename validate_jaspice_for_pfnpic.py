@@ -4,39 +4,34 @@ from comet.metrics.regression_metrics import RegressionReport
 from comet.models import load_checkpoint
 import pandas as pd
 import argparse
+# from preprocess.psql import connect_db, create_table, drop_table, insert_col, get_raw_output_paths
+from tqdm import tqdm
 from os import path
 from PIL import Image
-from pathlib import Path
-from tqdm import tqdm
 
 def main(args):
     print(args)
-    dataset = pd.read_csv("data/shichimi_val_da.csv")
+    dataset = pd.read_csv("data/pfnpic.csv")
     print(dataset)
     imgids = dataset["imgid"]
-    with open("data/stair_captions_v1.2_val.json", 'r') as f:
-        stair = json.load(f)
-
-    images = stair["images"] # flickr_url
-    annotations = stair["annotations"] # annotations
-    image_to_imgid = {im["flickr_url"] : im["id"] for im in images}
     imgid_to_captions = {}
-    for ann in annotations:
-        imgid_to_captions.setdefault(ann["image_id"],[]).append(ann["caption"])
+    with open("data/pfnpic.json") as f:
+        raws = json.load(f)
+        for data in raws:
+            imgid_to_captions[data["id"]] = data["references"]
 
     candidates = {i: [hypo] for i, hypo in enumerate(dataset["mt"])}
-    references = {i: imgid_to_captions[imgid] for i, imgid in enumerate(dataset["imgid"])}
+    references = {i: imgid_to_captions[str(imgid)] for i, imgid in enumerate(dataset["imgid"])}
     gts = {i: mos for i, mos in enumerate(dataset["score"])}
     # gt_scores = [gts[k] for k,_ in candidates.items()]
     assert len(candidates) == len(references) == len(dataset)
 
     for imgid in candidates.keys():
-        assert len(references[imgid]) == 5
-
-    img_dir_path = "data/downloaded_images"
+        # print(gts[imgid],candidates[imgid], references[imgid][0])
+        assert len(references[imgid]) == 3, len(references[imgid])
 
     def look_for_image(imgid, img_dir_path):
-        img_name = path.join(img_dir_path, f"{imgid}.jpg")
+        img_name = path.join(img_dir_path, f"{imgid}.png")
         img = Image.open(img_name).convert('RGB')
         return img
 
@@ -49,16 +44,17 @@ def main(args):
         except (IOError, SyntaxError) as e:
             return False
 
-    print(references)
 
-
+    img_dir_path = "data/pfnpic_images"
     # mycomet
     rep = RegressionReport()
     model = load_checkpoint(args.model)
     data = []
     gt_scores = []
+
+
     for imgid, hypo in tqdm(candidates.items()):
-        if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.jpg"):
+        if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
             data.append(
                 {
                     "src": references[imgid][0],
@@ -68,10 +64,21 @@ def main(args):
                 }
             )
             gt_scores.append(gts[imgid])
-
-    seg_scores, sys_score = model.predict(data,cuda=True,show_progress=True)
+    # print(gt_scores)
+    seg_scores, sys_score = model.predict(data,cuda=True)
     metrics = rep.compute(sys_score, gt_scores)
-    # metrics = corrcoef(sys_score, gt_scores)
+
+    # diff_tuple = []
+    # for i, (k,v) in enumerate(candidates.items()):
+    #     diff = abs(sys_score[i] - gt_scores[i] / 5.)
+    #     diff_tuple.append((diff,sys_score[i],gt_scores[i] / 5.,v,references[i]))
+
+    # diff_tuple.sort(reverse=True)
+    # for diff, score, gt, v, ref in diff_tuple[:100]:
+    #     print(f"scores: {score} / gts: {gt} (diff: {diff:.4f})")
+    #     print("hypo",v)
+    #     print("gt",ref,end="\n\n")
+
     print("COMET",metrics)
 
     # jaspice
@@ -80,7 +87,7 @@ def main(args):
     # for i, (k,v) in enumerate(list(candidates.items())[:20]):
     #     print(f"scores: {scores[i]} / gts: {gt_scores[i]}")
     #     print("hypo",v)
-    #     print("gt",imgid_to_captions[k],end="\n\n")
+    #     print("gt",references[i],end="\n\n")
 
     metrics = rep.compute(scores, gt_scores)
     # metrics = corrcoef(scores,gt_scores)
