@@ -20,75 +20,75 @@ import numpy as np
 import torch
 import cv2
 
-from detectron2.utils.visualizer import ColorMode, Visualizer
-import detectron2.data.transforms as T
+from typing import List, Union
 
-from detectron2.projects.deeplab import add_deeplab_config
-from detectron2.data.detection_utils import read_image
-from detectron2.utils.logger import setup_logger
-from ovseg.open_vocab_seg import add_ovseg_config
-from detectron2.config import get_cfg
+import numpy as np
 
-from detectron2.data import MetadataCatalog
-from detectron2.engine.defaults import DefaultPredictor
-from detectron2.utils.visualizer import ColorMode, Visualizer
-from detectron2.modeling import build_model
+try:
+    # ignore ShapelyDeprecationWarning from fvcore
+    import warnings
+
+    from shapely.errors import ShapelyDeprecationWarning
+
+    warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
+except:
+    pass
+import os
+
+import huggingface_hub
+import torch
 from detectron2.checkpoint import DetectionCheckpointer
+from detectron2.config import get_cfg
+from detectron2.data import MetadataCatalog
+from detectron2.engine import DefaultTrainer
+from detectron2.projects.deeplab import add_deeplab_config
+from detectron2.utils.visualizer import Visualizer, random_color
+from huggingface_hub import hf_hub_download
+from PIL import Image
+
+from san import add_san_config
+from san.data.datasets.register_coco_stuff_164k import COCO_CATEGORIES
+
+BACKBONE = "san_vit_b_16"
+model_cfg = {
+    "san_vit_b_16": {
+        "config_file": "configs/san_clip_vit_res4_coco.yaml",
+        "model_path": "huggingface:san_vit_b_16.pth",
+    },
+    "san_vit_large_16": {
+        "config_file": "configs/san_clip_vit_large_res4_coco.yaml",
+        "model_path": "huggingface:san_vit_large_14.pth",
+    },
+}
 
 
-def setup_cfg():
+def download_model(model_path: str):
+    """
+    Download the model from huggingface hub.
+    Args:
+        model_path (str): the model path
+    Returns:
+        str: the downloaded model path
+    """
+    if "HF_TOKEN" in os.environ:
+        huggingface_hub.login(token=os.environ["HF_TOKEN"])
+    model_path = model_path.split(":")[1]
+    model_path = hf_hub_download("Mendel192/san", filename=model_path)
+    return model_path
+
+
+def setup(device=None):
+    """
+    Create configs and perform basic setups.
+    """
     cfg = get_cfg()
     # for poly lr schedule
     add_deeplab_config(cfg)
-    add_ovseg_config(cfg)
-    cfg.merge_from_file("ovseg/configs/ovseg_R101c_vitB_bs32_120k.yaml")
-    cfg.merge_from_list("MODEL.WEIGHTS ovseg/ovseg_R101c_vitB16_ft_mpt.pth".split())
+    add_san_config(cfg)
+    cfg.merge_from_file(model_cfg[BACKBONE]["config_file"])
+    cfg.MODEL.DEVICE = device or "cuda" if torch.cuda.is_available() else "cpu"
     cfg.freeze()
     return cfg
-
-class OVSegVisualizer(Visualizer):
-    def __init__(self, img_rgb, metadata=None, scale=1.0, instance_mode=ColorMode.IMAGE, class_names=None):
-        super().__init__(img_rgb, metadata, scale, instance_mode)
-        self.class_names = class_names
-
-    def draw_sem_seg(self, sem_seg, area_threshold=None, alpha=0.8):
-        """
-        Draw semantic segmentation predictions/labels.
-
-        Args:
-            sem_seg (Tensor or ndarray): the segmentation of shape (H, W).
-                Each value is the integer label of the pixel.
-            area_threshold (int): segments with less than `area_threshold` are not drawn.
-            alpha (float): the larger it is, the more opaque the segmentations are.
-
-        Returns:
-            output (VisImage): image object with visualizations.
-        """
-        if isinstance(sem_seg, torch.Tensor):
-            sem_seg = sem_seg.numpy()
-        labels, areas = np.unique(sem_seg, return_counts=True)
-        sorted_idxs = np.argsort(-areas).tolist()
-        labels = labels[sorted_idxs]
-        class_names = self.class_names if self.class_names is not None else self.metadata.stuff_classes
-
-        for label in filter(lambda l: l < len(class_names), labels):
-            try:
-                mask_color = [x / 255 for x in self.metadata.stuff_colors[label]]
-            except (AttributeError, IndexError):
-                mask_color = None
-
-            binary_mask = (sem_seg == label).astype(np.uint8)
-            text = class_names[label]
-            self.draw_binary_mask(
-                binary_mask,
-                color=mask_color,
-                edge_color=(1.0, 1.0, 240.0 / 255),
-                text=text,
-                alpha=alpha,
-                area_threshold=area_threshold,
-            )
-        return self.output
-
 
 class CometEstimator(Estimator):
     """
@@ -152,27 +152,17 @@ class CometEstimator(Estimator):
             torch.nn.Sigmoid()
         ])
 
-
-        cfg = setup_cfg()
-        self.ovseg = build_model(cfg)
-        checkpointer = DetectionCheckpointer(self.ovseg)
-        checkpointer.load(cfg.MODEL.WEIGHTS)
-
-        self.ovseg.eval()
-        for param in self.ovseg.parameters():
-            param.requires_grad = False
-
-        self.input_format = cfg.INPUT.FORMAT
         self.patch_linear = torch.nn.Linear(1024,768)
-        
-        self.metadata = MetadataCatalog.get(
-            cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused"
-        )
 
-        self.instance_mode = ColorMode.IMAGE
-        self.aug = T.ResizeShortestEdge(
-            [cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MIN_SIZE_TEST], cfg.INPUT.MAX_SIZE_TEST
-        )
+
+        model_path = model_cfg[BACKBONE]["model_path"]
+        cfg = setup()
+        self.san = DefaultTrainer.build_model(cfg)
+        if model_path.startswith("huggingface:"):
+            model_path = download_model(model_path)
+        print("Loading model from: ", model_path)
+        DetectionCheckpointer(self.san, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
+        print("Loaded model from: ", model_path)
 
 
     def configure_optimizers(
@@ -257,6 +247,19 @@ class CometEstimator(Estimator):
         patches = patches.permute(0, 2, 1) # b, c, n
         return patches
 
+    def _merge_vocabulary(self, vocabulary: List[str]) -> List[str]:
+        default_voc = [c["name"] for c in COCO_CATEGORIES]
+        return vocabulary + [c for c in default_voc if c not in vocabulary]
+
+    def _postprocess(
+        self, result: torch.Tensor, ori_vocabulary: List[str]
+    ):
+        result = result.argmax(dim=0)  # (H, W)
+        if len(ori_vocabulary) == 0:
+            return result
+        result[result >= len(ori_vocabulary)] = len(ori_vocabulary)
+        return result
+
     def forward(
         self,
         src_tokens: torch.tensor,
@@ -288,27 +291,26 @@ class CometEstimator(Estimator):
         """
 
         # TODO: 修正img = read_image(path, format="BGR")
-        class_names = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+        vocabulary = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+        vocabulary = list(set([v.lower().strip() for v in vocabulary]))
 
         images = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
-        self.ovseg.eval()
+        self.san.eval()
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
             # Apply pre-processing to image.
             inputs = []
-            for original_image in images:
-                if self.input_format == "RGB":
-                    # whether the model expects BGR inputs or RGB
-                    original_image = original_image[:, :, ::-1]
-                height, width = original_image.shape[:2]
-                image = self.aug.get_transform(original_image).apply_image(original_image)
+            for image in images:  # TODO: RGB ? BGR ?
+                height, width = image.shape[:2]
                 image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
-                inputs.append({"image": image, "height": height, "width": width, "class_names": class_names})
+                inputs.append({"image": image, "height": height, "width": width, "vocabulary": vocabulary})
             
-            predictions = self.ovseg(inputs)
-
-        # predictions = self.predictor(imgs, class_names)
-        pred = [p["sem_seg"].argmax(dim=0).unsqueeze(0) for p in predictions]
-        pred = torch.cat(pred,dim=0).float() # B, H, W
+            # print("vocabulary:", vocabulary)
+            ori_vocabulary = vocabulary
+            vocabulary = self._merge_vocabulary(vocabulary)
+            results = self.san(inputs)
+        
+        seg_map = [self._postprocess(res["sem_seg"], ori_vocabulary).unsqueeze(0) for res in results]
+        pred = torch.cat(seg_map,dim=0).float()
         pred_patch = self.patchify(pred)
         pred_patch = self.patch_linear(pred_patch)
         # pred_patch = torch.randn((src_lengths.shape[0],64,768)).float().cuda() # for DEBUG
