@@ -16,9 +16,116 @@ from comet.models.estimators.estimator_base import Estimator
 from comet.modules.feedforward import FeedForward
 from comet.modules.scalar_mix import ScalarMixWithDropout
 from torchnlp.utils import collate_tensors
+import numpy as np
+import torch
+import cv2
 
-import clip
-# from transformers import CLIPProcessor, CLIPModel
+from detectron2.engine.defaults import DefaultPredictor
+from detectron2.utils.visualizer import ColorMode, Visualizer
+
+
+from detectron2.projects.deeplab import add_deeplab_config
+from detectron2.data.detection_utils import read_image
+from detectron2.utils.logger import setup_logger
+from ovseg.open_vocab_seg import add_ovseg_config
+from detectron2.config import get_cfg
+
+from detectron2.data import MetadataCatalog
+from detectron2.engine.defaults import DefaultPredictor
+from detectron2.utils.visualizer import ColorMode, Visualizer
+
+
+
+class OVSegPredictor(DefaultPredictor):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        # freeze model
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+    def __call__(self, images, class_names):
+        """
+        Args:
+            original_image (np.ndarray): an image of shape (H, W, C) (in BGR order).
+
+        Returns:
+            predictions (dict):
+                the output of the model for one image only.
+                See :doc:`/tutorials/models` for details about the format.
+        """
+        with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
+            # Apply pre-processing to image.
+            inputs = []
+            for original_image in images:
+                if self.input_format == "RGB":
+                    # whether the model expects BGR inputs or RGB
+                    original_image = original_image[:, :, ::-1]
+                height, width = original_image.shape[:2]
+                image = self.aug.get_transform(original_image).apply_image(original_image)
+                image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+                inputs.append({"image": image, "height": height, "width": width, "class_names": class_names})
+            
+            predictions = self.model(inputs)
+            return predictions
+
+
+def setup_cfg():
+    cfg = get_cfg()
+    # for poly lr schedule
+    add_deeplab_config(cfg)
+    add_ovseg_config(cfg)
+    cfg.merge_from_file("ovseg/configs/ovseg_swinB_vitL_demo.yaml")
+    cfg.merge_from_list("MODEL.WEIGHTS ovseg/ovseg_swinbase_vitL14_ft_mpt.pth".split())
+    cfg.freeze()
+    return cfg
+
+
+
+
+
+class OVSegVisualizer(Visualizer):
+    def __init__(self, img_rgb, metadata=None, scale=1.0, instance_mode=ColorMode.IMAGE, class_names=None):
+        super().__init__(img_rgb, metadata, scale, instance_mode)
+        self.class_names = class_names
+
+    def draw_sem_seg(self, sem_seg, area_threshold=None, alpha=0.8):
+        """
+        Draw semantic segmentation predictions/labels.
+
+        Args:
+            sem_seg (Tensor or ndarray): the segmentation of shape (H, W).
+                Each value is the integer label of the pixel.
+            area_threshold (int): segments with less than `area_threshold` are not drawn.
+            alpha (float): the larger it is, the more opaque the segmentations are.
+
+        Returns:
+            output (VisImage): image object with visualizations.
+        """
+        if isinstance(sem_seg, torch.Tensor):
+            sem_seg = sem_seg.numpy()
+        labels, areas = np.unique(sem_seg, return_counts=True)
+        sorted_idxs = np.argsort(-areas).tolist()
+        labels = labels[sorted_idxs]
+        class_names = self.class_names if self.class_names is not None else self.metadata.stuff_classes
+
+        for label in filter(lambda l: l < len(class_names), labels):
+            try:
+                mask_color = [x / 255 for x in self.metadata.stuff_colors[label]]
+            except (AttributeError, IndexError):
+                mask_color = None
+
+            binary_mask = (sem_seg == label).astype(np.uint8)
+            text = class_names[label]
+            self.draw_binary_mask(
+                binary_mask,
+                color=mask_color,
+                edge_color=(1.0, 1.0, 240.0 / 255),
+                text=text,
+                alpha=alpha,
+                area_threshold=area_threshold,
+            )
+        return self.output
+
 
 class CometEstimator(Estimator):
     """
@@ -60,9 +167,9 @@ class CometEstimator(Estimator):
             )
 
         input_emb_sz = (
-            self.encoder.output_units * 7
+            self.encoder.output_units * (6+64)
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * 7
+            else self.encoder.output_units * 2 * (6+64)
         )
 
         self.ff = torch.nn.Sequential(*[
@@ -82,11 +189,17 @@ class CometEstimator(Estimator):
             torch.nn.Sigmoid()
         ])
 
-        self.clip_linear = torch.nn.Linear(512,768)
-        self.clip_model, self.preprocess = clip.load("ViT-B/16")
+        cfg = setup_cfg()
+        self.predictor = OVSegPredictor(cfg)
+        self.patch_linear = torch.nn.Linear(1024,768)
 
-        # self.clip_new_model = CLIPModel.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K")
-        # self.new_processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-B-32-laion2B-s34B-b79K", torch_dtype=torch.float16)
+        self.metadata = MetadataCatalog.get(
+            cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused"
+        )
+
+        self.cpu_device = torch.device("cpu")
+        self.instance_mode = ColorMode.IMAGE
+
 
     def configure_optimizers(
         self,
@@ -160,6 +273,16 @@ class CometEstimator(Estimator):
         targets = {"score": torch.tensor(sample["score"], dtype=torch.float)}
         return inputs, targets
 
+    def patchify(self, img, patch_size=32):
+        assert len(img.shape) == 3, "3D tensors expected"
+        b, h, w = img.shape
+        assert w % patch_size == 0 and h % patch_size == 0
+            
+        unfold = torch.nn.Unfold(kernel_size=patch_size, stride=patch_size)
+        patches = unfold(img.unsqueeze(1))
+        patches = patches.permute(0, 2, 1) # b, c, n
+        return patches
+
     def forward(
         self,
         src_tokens: torch.tensor,
@@ -190,33 +313,39 @@ class CometEstimator(Estimator):
         :return: Dictionary with model outputs to be passed to the loss function.
         """
 
-        imgs = [self.preprocess(img).unsqueeze(0).cuda() for img in imgs]
-        imgs = torch.cat(imgs, dim=0)
+        # TODO: 修正img = read_image(path, format="BGR")
+        class_names = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 
-        # S画像データをclipで変換
-        with torch.no_grad():
-            img_emb = self.clip_model.encode_image(imgs).float()
+        imgs = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
+        predictions = self.predictor(imgs, class_names)
+        pred = [p["sem_seg"].argmax(dim=0).unsqueeze(0) for p in predictions]
+        pred = torch.cat(pred,dim=0).float() # B, H, W
+        pred_patch = self.patchify(pred)
+        pred_patch = self.patch_linear(pred_patch)
+        
+        need_vis = False
+        if need_vis:
+            import copy
+            blank_area = (r[0] == 0)
+            mask = copy.deepcopy(pred_mask.to('cpu'))
+            mask[blank_area] = 255
+            mask = np.array(mask, dtype=np.int)
 
-        # i = self.new_processor(src, images=img, return_tensors="pt", padding=True)
-        # i = {k : v.cuda() for k,v in i.items() }
-        # o = self.clip_new_model(**i)
-        # img_emb = o.image_embeds
-
+            visualizer = OVSegVisualizer(image, self.metadata, instance_mode=self.instance_mode, class_names=class_names)
+            vis_output = visualizer.draw_sem_seg(mask)
+        
         src_sentemb = self.get_sentence_embedding(src_tokens, src_lengths)
         mt_sentemb = self.get_sentence_embedding(mt_tokens, mt_lengths)
         ref_sentemb = self.get_sentence_embedding(ref_tokens, ref_lengths)
 
-        # B, D = img_emb.shape
-        # img_emb_new = torch.zeros((B, 768), device=img_emb.device, dtype=img_emb.dtype)
-        # img_emb_new[:, :D] = img_emb
-        # img_emb = img_emb_new
-
-        img_emb = self.clip_linear(img_emb)
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
         diff_src = torch.abs(mt_sentemb - src_sentemb)
 
         prod_ref = mt_sentemb * ref_sentemb
         prod_src = mt_sentemb * src_sentemb
+
+        mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src \
+                                    = [x.unsqueeze(1) for x in [mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src]]
 
         if (
             not hasattr(
@@ -225,8 +354,9 @@ class CometEstimator(Estimator):
             or self.hparams.switch_prob <= 0.0
         ):
             embedded_sequences = torch.cat(
-                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src, img_emb), dim=1
+                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,pred_patch), dim=1
             )
+            embedded_sequences = embedded_sequences.flatten(1) # TODO: 修正
             score = self.ff(embedded_sequences)
 
             if (alt_tokens is not None) and (alt_lengths is not None):
@@ -249,17 +379,18 @@ class CometEstimator(Estimator):
 
             if switch:
                 embedded_sequences = torch.cat(
-                    (mt_sentemb, ref_sentemb, prod_src, diff_src, prod_ref, diff_ref,img_emb),
+                    (mt_sentemb, ref_sentemb, prod_src, diff_src, prod_ref, diff_ref,pred_patch),
                     dim=1,
                 )
             else:
                 embedded_sequences = torch.cat(
-                    (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,img_emb),
+                    (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,pred_patch),
                     dim=1,
                 )
             return {"score": self.ff(embedded_sequences)}
 
         elif (alt_tokens is not None) and (alt_lengths is not None):
+            assert False
             # Switcheroo Inference!
             alt_sentemb = self.get_sentence_embedding(alt_tokens, alt_lengths)
             diff_alt = torch.abs(mt_sentemb - alt_sentemb)
@@ -309,6 +440,7 @@ class CometEstimator(Estimator):
             return {"score": score.mean(dim=0) * confidence, "confidence": confidence}
 
         else:
+            assert False
             # Usual scoring
             embedded_sequences = torch.cat(
                 (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1

@@ -518,7 +518,8 @@ class ShichimiDataset(Dataset):
         # print(labels)
 
         # Open image file
-        img = Image.open(img_name).convert('RGB')
+        from detectron2.data.detection_utils import read_image
+        img = read_image(img_name, format="BGR")
 
         labels["img"] = img
 
