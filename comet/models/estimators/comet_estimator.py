@@ -20,9 +20,8 @@ import numpy as np
 import torch
 import cv2
 
-from detectron2.engine.defaults import DefaultPredictor
 from detectron2.utils.visualizer import ColorMode, Visualizer
-
+import detectron2.data.transforms as T
 
 from detectron2.projects.deeplab import add_deeplab_config
 from detectron2.data.detection_utils import read_image
@@ -33,38 +32,8 @@ from detectron2.config import get_cfg
 from detectron2.data import MetadataCatalog
 from detectron2.engine.defaults import DefaultPredictor
 from detectron2.utils.visualizer import ColorMode, Visualizer
-
-
-
-class OVSegPredictor(DefaultPredictor):
-    def __init__(self, cfg):
-        super().__init__(cfg)
-
-    def __call__(self, images, class_names):
-        """
-        Args:
-            original_image (np.ndarray): an image of shape (H, W, C) (in BGR order).
-
-        Returns:
-            predictions (dict):
-                the output of the model for one image only.
-                See :doc:`/tutorials/models` for details about the format.
-        """
-        self.model.eval()
-        with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
-            # Apply pre-processing to image.
-            inputs = []
-            for original_image in images:
-                if self.input_format == "RGB":
-                    # whether the model expects BGR inputs or RGB
-                    original_image = original_image[:, :, ::-1]
-                height, width = original_image.shape[:2]
-                image = self.aug.get_transform(original_image).apply_image(original_image)
-                image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
-                inputs.append({"image": image, "height": height, "width": width, "class_names": class_names})
-            
-            predictions = self.model(inputs)
-            return predictions
+from detectron2.modeling import build_model
+from detectron2.checkpoint import DetectionCheckpointer
 
 
 def setup_cfg():
@@ -76,10 +45,6 @@ def setup_cfg():
     cfg.merge_from_list("MODEL.WEIGHTS ovseg/ovseg_R101c_vitB16_ft_mpt.pth".split())
     cfg.freeze()
     return cfg
-
-
-
-
 
 class OVSegVisualizer(Visualizer):
     def __init__(self, img_rgb, metadata=None, scale=1.0, instance_mode=ColorMode.IMAGE, class_names=None):
@@ -187,20 +152,27 @@ class CometEstimator(Estimator):
             torch.nn.Sigmoid()
         ])
 
+
         cfg = setup_cfg()
-        self.predictor = OVSegPredictor(cfg)
-        self.ovseg = self.predictor.model
-        self.patch_linear = torch.nn.Linear(1024,768)
-        
+        self.ovseg = build_model(cfg)
+        checkpointer = DetectionCheckpointer(self.ovseg)
+        checkpointer.load(cfg.MODEL.WEIGHTS)
+
+        self.ovseg.eval()
         for param in self.ovseg.parameters():
             param.requires_grad = False
 
+        self.input_format = cfg.INPUT.FORMAT
+        self.patch_linear = torch.nn.Linear(1024,768)
+        
         self.metadata = MetadataCatalog.get(
             cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused"
         )
 
-        self.cpu_device = torch.device("cpu")
         self.instance_mode = ColorMode.IMAGE
+        self.aug = T.ResizeShortestEdge(
+            [cfg.INPUT.MIN_SIZE_TEST, cfg.INPUT.MIN_SIZE_TEST], cfg.INPUT.MAX_SIZE_TEST
+        )
 
 
     def configure_optimizers(
@@ -318,8 +290,23 @@ class CometEstimator(Estimator):
         # TODO: 修正img = read_image(path, format="BGR")
         class_names = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 
-        imgs = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
-        predictions = self.predictor(imgs, class_names)
+        images = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
+        self.ovseg.eval()
+        with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
+            # Apply pre-processing to image.
+            inputs = []
+            for original_image in images:
+                if self.input_format == "RGB":
+                    # whether the model expects BGR inputs or RGB
+                    original_image = original_image[:, :, ::-1]
+                height, width = original_image.shape[:2]
+                image = self.aug.get_transform(original_image).apply_image(original_image)
+                image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+                inputs.append({"image": image, "height": height, "width": width, "class_names": class_names})
+            
+            predictions = self.ovseg(inputs)
+
+        # predictions = self.predictor(imgs, class_names)
         pred = [p["sem_seg"].argmax(dim=0).unsqueeze(0) for p in predictions]
         pred = torch.cat(pred,dim=0).float() # B, H, W
         pred_patch = self.patchify(pred)
