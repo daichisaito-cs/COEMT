@@ -324,6 +324,7 @@ class CometEstimator(Estimator):
         pred = torch.cat(pred,dim=0).float() # B, H, W
         pred_patch = self.patchify(pred)
         pred_patch = self.patch_linear(pred_patch)
+        # pred_patch = torch.randn((src_lengths.shape[0],64,768)).float().cuda() # for DEBUG
         
         need_vis = False
         if need_vis:
