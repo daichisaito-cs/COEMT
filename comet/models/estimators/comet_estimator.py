@@ -39,9 +39,6 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 class OVSegPredictor(DefaultPredictor):
     def __init__(self, cfg):
         super().__init__(cfg)
-        # freeze model
-        for param in self.model.parameters():
-            param.requires_grad = False
 
     def __call__(self, images, class_names):
         """
@@ -53,6 +50,7 @@ class OVSegPredictor(DefaultPredictor):
                 the output of the model for one image only.
                 See :doc:`/tutorials/models` for details about the format.
         """
+        self.model.eval()
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
             # Apply pre-processing to image.
             inputs = []
@@ -74,8 +72,8 @@ def setup_cfg():
     # for poly lr schedule
     add_deeplab_config(cfg)
     add_ovseg_config(cfg)
-    cfg.merge_from_file("ovseg/configs/ovseg_swinB_vitL_demo.yaml")
-    cfg.merge_from_list("MODEL.WEIGHTS ovseg/ovseg_swinbase_vitL14_ft_mpt.pth".split())
+    cfg.merge_from_file("ovseg/configs/ovseg_R101c_vitB_bs32_120k.yaml")
+    cfg.merge_from_list("MODEL.WEIGHTS ovseg/ovseg_R101c_vitB16_ft_mpt.pth".split())
     cfg.freeze()
     return cfg
 
@@ -191,7 +189,11 @@ class CometEstimator(Estimator):
 
         cfg = setup_cfg()
         self.predictor = OVSegPredictor(cfg)
+        self.ovseg = self.predictor.model
         self.patch_linear = torch.nn.Linear(1024,768)
+        
+        for param in self.ovseg.parameters():
+            param.requires_grad = False
 
         self.metadata = MetadataCatalog.get(
             cfg.DATASETS.TEST[0] if len(cfg.DATASETS.TEST) else "__unused"
