@@ -33,7 +33,7 @@ def main(args):
     def look_for_image(imgid, img_dir_path):
         img_name = path.join(img_dir_path, f"{imgid}.png")
         from detectron2.data.detection_utils import read_image
-        img = read_image(img_name, format="BGR")
+        img = read_image(img_name, format="RGB")
         return img
 
     def is_image_ok(img_path):

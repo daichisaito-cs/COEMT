@@ -10,9 +10,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 def main(args):
-    print(args)
     dataset = pd.read_csv("data/shichimi_val_da.csv")
-    print(dataset)
     imgids = dataset["imgid"]
     with open("data/stair_captions_v1.2_val.json", 'r') as f:
         stair = json.load(f)
@@ -38,7 +36,7 @@ def main(args):
     def look_for_image(imgid, img_dir_path):
         img_name = path.join(img_dir_path, f"{imgid}.jpg")
         from detectron2.data.detection_utils import read_image
-        img = read_image(img_name, format="BGR")
+        img = read_image(img_name, format="RGB")
         return img
 
     def is_image_ok(img_path):
@@ -49,9 +47,6 @@ def main(args):
             return True
         except (IOError, SyntaxError) as e:
             return False
-
-    print(references)
-
 
     # mycomet
     rep = RegressionReport()
