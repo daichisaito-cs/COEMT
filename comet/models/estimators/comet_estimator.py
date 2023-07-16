@@ -281,30 +281,31 @@ class CometEstimator(Estimator):
         return pe.to(device)
 
     def create_embeddings_from_mask(self, maskes, num_labels, label_emb):
+        from cc_torch import connected_components_labeling
         B, H, W = maskes.shape
         batch_embeddings = []
+        
+        # create positional encoding
+        positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
+        
         for b in range(B):
             mask = maskes[b,:,:]
             # label each connected component with a unique id
-            labelled_mask = measure.label(mask.detach().cpu().numpy())
-
-            # create positional encoding
-            positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
-
+            labelled_mask = connected_components_labeling(mask.to(torch.uint8)) # TODO: uint8でいいんだっけ...?????
             embeddings = []
             for i in range(num_labels):
                 indices = (labelled_mask == i)
                 if indices.any():
                     label = mask[indices][0]
                     emb = label_emb[label] + positional_encoding[indices].mean(dim=0)
-                else:
-                    emb = positional_encoding[indices].mean(dim=0) # TODO: 考える
-                embeddings.append(emb.unsqueeze(0))
+                    embeddings.append(emb.unsqueeze(0))
 
+            embeddings.extend([torch.zeros_like(label_emb[0],device=label_emb.device).unsqueeze(0) for _ in range(num_labels - len(embeddings))])
             embeddings = torch.cat(embeddings, dim=0)
             batch_embeddings.append(embeddings.unsqueeze(0))
 
         batch_embeddings = torch.cat(batch_embeddings, dim=0)
+
         return batch_embeddings
 
 
