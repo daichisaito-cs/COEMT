@@ -21,6 +21,7 @@ import torch
 import cv2
 
 from typing import List, Union
+from skimage import measure
 
 import numpy as np
 
@@ -112,6 +113,11 @@ class CometEstimator(Estimator):
         Initializes the estimator architecture.
         """
         super()._build_model()
+
+        vocabulary = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+        vocabulary = list(set([v.lower().strip() for v in vocabulary]))
+
+
         if self.hparams.encoder_model != "LASER":
             self.layer = (
                 int(self.hparams.layer)
@@ -129,10 +135,11 @@ class CometEstimator(Estimator):
                 else None
             )
 
+        N = len(self._merge_vocabulary(vocabulary))
         input_emb_sz = (
-            self.encoder.output_units * (6+64)
+            self.encoder.output_units * (6+N)
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * (6+64)
+            else self.encoder.output_units * 2 * N
         )
 
         self.ff = torch.nn.Sequential(*[
@@ -163,6 +170,8 @@ class CometEstimator(Estimator):
         print("Loading model from: ", model_path)
         DetectionCheckpointer(self.san, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
         print("Loaded model from: ", model_path)
+
+        self.vocabulary = vocabulary
 
 
     def configure_optimizers(
@@ -238,12 +247,12 @@ class CometEstimator(Estimator):
         return inputs, targets
 
     def patchify(self, img, patch_size=32):
-        assert len(img.shape) == 3, "3D tensors expected"
-        b, h, w = img.shape
+        assert len(img.shape) == 4, "4D tensors expected"
+        b, c, h, w = img.shape
         assert w % patch_size == 0 and h % patch_size == 0
             
         unfold = torch.nn.Unfold(kernel_size=patch_size, stride=patch_size)
-        patches = unfold(img.unsqueeze(1))
+        patches = unfold(img)
         patches = patches.permute(0, 2, 1) # b, c, n
         return patches
 
@@ -259,6 +268,45 @@ class CometEstimator(Estimator):
             return result
         result[result >= len(ori_vocabulary)] = len(ori_vocabulary)
         return result
+
+    def calculate_positional_encoding(self, height, width, dim_model,device):
+        # Positional encoding for 2D images
+        pe = torch.zeros(height, width, dim_model)
+        y_position = torch.arange(0, height).unsqueeze(1)
+        x_position = torch.arange(0, width).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0., dim_model, 2) * -(np.log(10000.0) / dim_model))
+
+        pe[:, :, 0::2] = torch.sin(y_position * div_term)
+        pe[:, :, 1::2] = torch.cos(x_position * div_term)
+        return pe.to(device)
+
+    def create_embeddings_from_mask(self, maskes, num_labels, label_emb):
+        B, H, W = maskes.shape
+        batch_embeddings = []
+        for b in range(B):
+            mask = maskes[b,:,:]
+            # label each connected component with a unique id
+            labelled_mask = measure.label(mask.detach().cpu().numpy())
+
+            # create positional encoding
+            positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
+
+            embeddings = []
+            for i in range(num_labels):
+                indices = (labelled_mask == i)
+                if indices.any():
+                    label = mask[indices][0]
+                    emb = label_emb[label] + positional_encoding[indices].mean(dim=0)
+                else:
+                    emb = positional_encoding[indices].mean(dim=0) # TODO: 考える
+                embeddings.append(emb.unsqueeze(0))
+
+            embeddings = torch.cat(embeddings, dim=0)
+            batch_embeddings.append(embeddings.unsqueeze(0))
+
+        batch_embeddings = torch.cat(batch_embeddings, dim=0)
+        return batch_embeddings
+
 
     def forward(
         self,
@@ -291,11 +339,9 @@ class CometEstimator(Estimator):
         """
 
         # TODO: 修正img = read_image(path, format="BGR")
-        vocabulary = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
-        vocabulary = list(set([v.lower().strip() for v in vocabulary]))
-
         images = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
         self.san.eval()
+        vocabulary = self.vocabulary
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
             # Apply pre-processing to image.
             inputs = []
@@ -310,21 +356,15 @@ class CometEstimator(Estimator):
             results = self.san(inputs)
         
         seg_map = [self._postprocess(res["sem_seg"], ori_vocabulary).unsqueeze(0) for res in results]
-        pred = torch.cat(seg_map,dim=0).float()
-        pred_patch = self.patchify(pred)
-        pred_patch = self.patch_linear(pred_patch)
-        # pred_patch = torch.randn((src_lengths.shape[0],64,768)).float().cuda() # for DEBUG
-        
-        need_vis = False
-        if need_vis:
-            import copy
-            blank_area = (r[0] == 0)
-            mask = copy.deepcopy(pred_mask.to('cpu'))
-            mask[blank_area] = 255
-            mask = np.array(mask, dtype=np.int)
+        pred = torch.cat(seg_map,dim=0) # (B H W)
 
-            visualizer = OVSegVisualizer(image, self.metadata, instance_mode=self.instance_mode, class_names=class_names)
-            vis_output = visualizer.draw_sem_seg(mask)
+        labels = self.encoder.prepare_sample(vocabulary)
+        label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda()) 
+
+        seg_emb = self.create_embeddings_from_mask(pred, len(vocabulary), label_emb)
+        
+        # pred_patch = self.patchify(pred.float())
+        # pred_patch = self.patch_linear(pred_patch)
         
         src_sentemb = self.get_sentence_embedding(src_tokens, src_lengths)
         mt_sentemb = self.get_sentence_embedding(mt_tokens, mt_lengths)
@@ -346,7 +386,7 @@ class CometEstimator(Estimator):
             or self.hparams.switch_prob <= 0.0
         ):
             embedded_sequences = torch.cat(
-                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,pred_patch), dim=1
+                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,seg_emb), dim=1
             )
             embedded_sequences = embedded_sequences.flatten(1) # TODO: 修正
             score = self.ff(embedded_sequences)

@@ -41,6 +41,8 @@ class Kendall:
 
         :return: Kendall Tau correlation value.
         """
+        if np.isnan(x).any() or np.isnan(y).any():
+            return np.nan
         return torch.tensor(kendalltau(x, y)[0], dtype=torch.float32)
 
 
@@ -56,6 +58,9 @@ class Pearson:
 
         :return: Pearson correlation value.
         """
+        # check nan or inf
+        if np.isnan(x).any() or np.isnan(y).any():
+            return np.nan
         return torch.tensor(pearsonr(x, y)[0], dtype=torch.float32)
 
 
@@ -72,4 +77,6 @@ class Spearman:
         Return:
             - Spearman correlation value.
         """
+        if np.isnan(x).any() or np.isnan(y).any():
+            return np.nan
         return torch.tensor(spearmanr(x, y)[0], dtype=torch.float32)
