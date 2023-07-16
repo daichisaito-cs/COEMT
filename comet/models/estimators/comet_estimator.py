@@ -114,7 +114,7 @@ class CometEstimator(Estimator):
         """
         super()._build_model()
 
-        vocabulary = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+        vocabulary = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
         vocabulary = list(set([v.lower().strip() for v in vocabulary]))
 
 
@@ -287,7 +287,8 @@ class CometEstimator(Estimator):
         
         # create positional encoding
         positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
-        
+
+        vocab = self._merge_vocabulary(self.vocabulary)
         for b in range(B):
             mask = maskes[b,:,:]
             # label each connected component with a unique id
@@ -299,6 +300,7 @@ class CometEstimator(Estimator):
                     label = mask[indices][0]
                     emb = label_emb[label] + positional_encoding[indices].mean(dim=0)
                     embeddings.append(emb.unsqueeze(0))
+                    print(vocab[label])
 
             embeddings.extend([torch.zeros_like(label_emb[0],device=label_emb.device).unsqueeze(0) for _ in range(num_labels - len(embeddings))])
             embeddings = torch.cat(embeddings, dim=0)
@@ -307,6 +309,53 @@ class CometEstimator(Estimator):
         batch_embeddings = torch.cat(batch_embeddings, dim=0)
 
         return batch_embeddings
+
+    def visualize(
+        self,
+        image: Image.Image,
+        sem_seg: np.ndarray,
+        vocabulary: List[str],
+        output_file: str = None,
+        mode: str = "overlay",
+    ) -> Union[Image.Image, None]:
+        """
+        Visualize the segmentation result.
+        Args:
+            image (Image.Image): the input image
+            sem_seg (np.ndarray): the segmentation result
+            vocabulary (List[str]): the vocabulary used for the segmentation
+            output_file (str): the output file path
+            mode (str): the visualization mode, can be "overlay" or "mask"
+        Returns:
+            Image.Image: the visualization result. If output_file is not None, return None.
+        """
+        # add temporary metadata
+        # set numpy seed to make sure the colors are the same
+        np.random.seed(0)
+        colors = [random_color(rgb=True, maximum=255) for _ in range(len(vocabulary))]
+        MetadataCatalog.get("_temp").set(stuff_classes=vocabulary, stuff_colors=colors)
+        metadata = MetadataCatalog.get("_temp")
+        if isinstance(image, np.ndarray):
+            image = Image.fromarray(image)
+        
+        image.save(output_file + "_original.png")
+        if mode == "overlay":
+            v = Visualizer(image, metadata)
+            v = v.draw_sem_seg(sem_seg, area_threshold=0).get_image()
+            v = Image.fromarray(v)
+        else:
+            v = np.zeros((image.size[1], image.size[0], 3), dtype=np.uint8)
+            labels, areas = np.unique(sem_seg, return_counts=True)
+            sorted_idxs = np.argsort(-areas).tolist()
+            labels = labels[sorted_idxs]
+            for label in filter(lambda l: l < len(metadata.stuff_classes), labels):
+                v[sem_seg == label] = metadata.stuff_colors[label]
+            v = Image.fromarray(v)
+        # remove temporary metadata
+        MetadataCatalog.remove("_temp")
+        if output_file is None:
+            return v
+        v.save(output_file)
 
 
     def forward(
@@ -339,7 +388,6 @@ class CometEstimator(Estimator):
         :return: Dictionary with model outputs to be passed to the loss function.
         """
 
-        # TODO: 修正img = read_image(path, format="BGR")
         images = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
         self.san.eval()
         vocabulary = self.vocabulary
@@ -358,6 +406,9 @@ class CometEstimator(Estimator):
         
         seg_map = [self._postprocess(res["sem_seg"], ori_vocabulary).unsqueeze(0) for res in results]
         pred = torch.cat(seg_map,dim=0) # (B H W)
+        
+        for b in range(pred.shape[0]):
+            self.visualize(images[b], pred[b].cpu().numpy(), vocabulary, output_file=f"logs/output_{b}.png")
 
         labels = self.encoder.prepare_sample(vocabulary)
         label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda()) 
