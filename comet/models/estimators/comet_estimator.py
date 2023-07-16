@@ -50,6 +50,9 @@ from PIL import Image
 from san import add_san_config
 from san.data.datasets.register_coco_stuff_164k import COCO_CATEGORIES
 
+MAX_SEG_LABEL = 200 # 必ず写っている物体数には限りがあるので200にしておく
+VISUALIZE = False
+
 BACKBONE = "san_vit_b_16"
 model_cfg = {
     "san_vit_b_16": {
@@ -115,8 +118,8 @@ class CometEstimator(Estimator):
         super()._build_model()
 
         vocabulary = ['person', 'bicycle', 'car', 'motorbike', 'aeroplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'sofa', 'pottedplant', 'bed', 'diningtable', 'toilet', 'tvmonitor', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
+        # vocabulary.extend(['art', 'pentagon', 'colors', 'mustard', 'pills', 'oraqng', 'candy', 'sponch', 'circles', 'bear', 'crayons', 'lines', 'yellow', 'teperature', 'wrap', 'strap', 'coco', 'cement', 'mug', 'hexagon', 'bottom', 'chips', 'te', 'stand', 'please', 'bulb', 'sleeper', 'squirt', 'wit', 'obtain', 'hexagonal', 'stripe', 'erasers', 'diagnoal', 'shape', 'pink', 'it', 'cube', 'papers', 'boxq', 'coke', 'bands', 'with', 'measuring', 'wash', 'thread', 'pakage', 'soda', 'beige', 'place', 'vitamins', 'whie', 'structure', 'below', 'right-hand', 'photo', 'silper', 'gardasil', 'chappel', 'room', 'bootle', 'half', 'toothpaste', 'numbers', 'cap', 'disk', 'thermameter', 'product', 'soap', 'word', 'color', 'card', 'mouse', 'packages', 'leather', 'rectangular', 'animal', 'water', 'powder', 'plushie', 'case', 'layer', 'shope', 'balls', 'stripes', 'wrapped', 'disc', 'smaill', 'push', 'jane', 'expo\\', 'thermos', 'mall', '[', 'dull', 'manilla', 'container', 'ju', 'teddie', 'mivecthe', 'v-band', 'wholes', 'bano', 'tupe', 'kids\\', 'tonthe', 'octagon', 'pocket', 'cans', 'squishy', 'lrft', 'stubby', 'markings', 'scripture', 'spanch', 'calculator', 'bottles', 'staples', 'ot', 'ont', 'shield', 'k', 'cotton', 'jar', 'woman', 'child', 'eraser', 'ribbon', 'coaster', 'booklet', 'bx', 'rectangle', 'yello', 'lower', 'mark', 'board', 'holder', 'trowel', 'location', 'lid', 'bunch', 'cat', 'scale', 'sui', 'closest', 'space', 'star', 'botton', 'outline', 'orange', 'bux', 'box', 'thermometer', 'inside', 'glows', 'end', 'punchcard', 'bowl', 'fallen', 'plushy', 'gatsby', 'from', 'https', 'mixer', 'flag', 'cone', 'bottommost', 'chocolate', 'marks', 'caps', 'gren', 'ju-band', 'compartment', 'sticks', 'spongel', 'shapes', 'pick', 'logo', 'felt', 'bow', 'dispenser', 'burgondy', 'tape', 'snacks', 'lettering', 'bun', 'code', 'food', 'bean', 'palce', 'squeeze', 'mono', 'visa', 'spots', 'outer', 'sponge', 'writings', 'man', 'slippers', 'tea', 'brown', 'notepad', 'cardboard', 'torch', 'bottle', 'wheel', 'face', 'mercury', 'wooden', 'box-', 'gove', 'flipflop', 'cereal', 'gold', 'tl', 'int', 'symbol', 'cellaphane', 'bag', 'item', 'cd', 'bar', 'pale', 'rigth', 'pig', 'spach', 'pins', 'polythene', 'figurine', 'right', 'flipflops', 'sketch', 'flops', 'squeezy', 'drop', 'soup', 'mvoe', 'catalogue', 'dvd', 'darker', 'sandals', 'work', 'keychain', 'package', 'pad', 'eh', 'wrist', 'towards', 'words', 'tins', 'flip', 'packaged', 'triangular', 'corners', 'upright', 'pumpkin', 'teal', 'characters', 'needs', 'bags', 'bars', 'cartridge', 'meter', 'position', 'drawing', 'heart', 'tube', 'footwear', 'metal', 'into', 'kids', 'lefft', 'cassette', 'arms', 'recipe', 'cake', 'patten', 'stick', 'ball', 'pompoms', 'rgiht', 'krayons', 'flat', 'shoe', 'envelope', 'bottem', 'pencil', 'sauce', 'lable', 'barcode', 'cock', 'sandel', 'collar', 'above', 'flecks', 'pencils', 'spray', 'body', 'gel', 'pear', 'cream', 'on', 'items', 'handel', 'flop', 'thing', 'silver', 'circle', 'poms', 'tab', '\\', 'shiny', 'qtips', 'image', 'glue', 'temperature', 'light', 'cylinder', 'aid', 'rear', 'note', 'collection', 'get', 'yelow', 'thank', 'foil', 'grey', 'packed', 'lotion', 'cup', 'people', 'date', 'bandaid', 'chop', 'put', 'oil', 'insert', 'o', 'gems', 'stickers', 'inscription', 'colored', 'movie', 'band-aids', 'kleenex', 'brand', 'horizon', 'border', 'crayon', 'heard', 'half-black', 'packet', 'side', 'trim', 'bo', 'botom', 'pair', 'stack', 'wood', 'label', 'crackers', 'ha', 'clips', 'tan', 'shinny', 'tissues', 'sclipper', 'center', 'plastic', 'blower', 'spancha', 'colour', 'lime', 'hand', 'move', 'expo', 'coliur', 'drawer', 'aqua', 'tin', 'sticker', 'pen', 'teadybear', 'tot', 'spongy', 'edges', 'letter', 'store', 'containers', 'strip', 'condiment', 'cesar', 'grey/silver', 'drink', 'diagonal', 'toy', 'joke', 'loud', 'handle', 'mix', 'figure', 'rubber', 'remove', 'cork', 'stapler', 'pens', 'pattern', 'back', 'pickup', 'aids', 'packer', 'stuffed', 'pill', 'adjacent', 'cubicle', 'printing', 'katsup', 'leftmost', 'sports', 'medium', 'key', 'corner', 'one', 'video', 'cellophane', 'cubby', 'post', 'edge', 'lunch', ']', 'markers', 'folgers', 'tag', 'rope', 'text', 'men', 'pom', 'women', 'picture', 'medicine', 'cocacola', 'foot', 'egg', 'celsius', 'out', 'garden', 'size', 'seal', 'verticle', 'middle', 'thermometre', 'bin', 'coffee', 'chepal', 'vitamin', 'block', 'mugs', 'klunex', 'half-orange', 'pouch', 'marbles', 'left-hand', 'pin', 'design', 'translucent', 'band-aid', 'showing', 'book', 'gloves', 'peach', 'packing', 'candies', 'chappal', 'animals', 'writing', 'band', 'paste', 'jokes', 'teddybear', 'ticket', 'name', 'nozzle', 'packs', 'transparent', 'drag', 'laugh', 'mini', 'chain', 'topped', 'quadrant', 'labels', 'object', 'hold', 'colur', 'jel', 'kangaroo', 'letters', 'section', 'maroon', 'sky', 'plain', 'cover', 'portion', 'compact', 'top', 'person', 'cola', 'diagnol', 'stamps', 'cabinet', 'whiter', 'angle', 'form', 'upper', 'caste', 'pot', 'blak', 'clear', 'th', 'triangle', 'dark', 'apple', 'sheet', 'pop', 'grab', 'loer', 'print', 'line', 'type', 'and', 'balloon', 'wall', 'pick-up', 'thelower', 'apartment', '..', 'foam', 'circular', 'lot', 'appartment', 'black', 'green', 'flaps', 'bellow', 'close', 'copper', 'wristband', 'coca', 'chip', 'wrapping', 'sachet', 'plush', 'pack', 'bandaids', 'tissue', 'farthest', 'key-chain', 'triangles', 'dog', 'background', 'baggie', 'canister', 'aluminum', 'coloue', 'lemon', 'sandal', 'glove', 'buds', 'movies', 'in', 'objects', 'tanslucent', 'square', 'area', 'tibthe', 'situate', 'envelopes', 'dots', 'piggy', 'tootpaste', 'metallic', 'theupper', 'juband', 'capsules', 'noodles', 'cylindrical', 'sponce', 'stabler', 'sock', 'love', 'the', 'number', 'ash', 'doll', 'smiley', 'dish', 'slipper', 'photograph', 'multi', 'bears', 'teddy', 'bar-code', 'drinks', 'tray', 'blastic', 'toys', 'boy', 'flip-flop', 'packaging', 'purple', 'straps', 'humans', 'cokes', 'front', 'catch', 'couple', 'sliver', 'bottleand', 'bandages', 'blond', 'next', 'left', 'part', 'rightmost', 'beads', 'sqaure', 'coca-cola', 'hox', 'pastel', 'hearts', 'to', 'deposit', 'boxes', 'roll', 'movedt', 'duster', 'thats', 'books', 'alphabets', 'up', 'tip', 'rectangles', 'persons', 'dot', 'clip', 'oval', 'right-most', 'battery', 'chat', 'multicolour', 'chopsticks', 'holes', 'round', 'chest', 'ketchup', 'tubes', 'let', 'receipt', 'blue', 'paper', 'thong', 'eyre', 'palish', 'material', 'rack', 'button', 'cards'])
         vocabulary = list(set([v.lower().strip() for v in vocabulary]))
-
 
         if self.hparams.encoder_model != "LASER":
             self.layer = (
@@ -135,11 +138,10 @@ class CometEstimator(Estimator):
                 else None
             )
 
-        N = len(self._merge_vocabulary(vocabulary))
         input_emb_sz = (
-            self.encoder.output_units * (6+N)
+            self.encoder.output_units * (6+MAX_SEG_LABEL)
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * N
+            else self.encoder.output_units * 2 * (6+MAX_SEG_LABEL)
         )
 
         self.ff = torch.nn.Sequential(*[
@@ -171,7 +173,8 @@ class CometEstimator(Estimator):
         DetectionCheckpointer(self.san, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
         print("Loaded model from: ", model_path)
 
-        self.vocabulary = vocabulary
+        self.vocabulary = self._merge_vocabulary(vocabulary)
+
 
 
     def configure_optimizers(
@@ -260,15 +263,6 @@ class CometEstimator(Estimator):
         default_voc = [c["name"] for c in COCO_CATEGORIES]
         return vocabulary + [c for c in default_voc if c not in vocabulary]
 
-    def _postprocess(
-        self, result: torch.Tensor, ori_vocabulary: List[str]
-    ):
-        result = result.argmax(dim=0)  # (H, W)
-        if len(ori_vocabulary) == 0:
-            return result
-        result[result >= len(ori_vocabulary)] = len(ori_vocabulary)
-        return result
-
     def calculate_positional_encoding(self, height, width, dim_model,device):
         # Positional encoding for 2D images
         pe = torch.zeros(height, width, dim_model)
@@ -288,7 +282,7 @@ class CometEstimator(Estimator):
         # create positional encoding
         positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
 
-        vocab = self._merge_vocabulary(self.vocabulary)
+        # vocab = self._merge_vocabulary(self.vocabulary)
         for b in range(B):
             mask = maskes[b,:,:]
             # label each connected component with a unique id
@@ -300,9 +294,12 @@ class CometEstimator(Estimator):
                     label = mask[indices][0]
                     emb = label_emb[label] + positional_encoding[indices].mean(dim=0)
                     embeddings.append(emb.unsqueeze(0))
-                    print(vocab[label])
+                    # print(vocab[label])
 
-            embeddings.extend([torch.zeros_like(label_emb[0],device=label_emb.device).unsqueeze(0) for _ in range(num_labels - len(embeddings))])
+                if len(embeddings) >= MAX_SEG_LABEL:
+                    break
+
+            embeddings.extend([torch.zeros_like(label_emb[0],device=label_emb.device).unsqueeze(0) for _ in range(MAX_SEG_LABEL - len(embeddings))])
             embeddings = torch.cat(embeddings, dim=0)
             batch_embeddings.append(embeddings.unsqueeze(0))
 
@@ -388,7 +385,7 @@ class CometEstimator(Estimator):
         :return: Dictionary with model outputs to be passed to the loss function.
         """
 
-        images = [cv2.resize(img, dsize=(256, 256)) for img in imgs]
+        images = [cv2.resize(img, dsize=(512, 512)) for img in imgs]
         self.san.eval()
         vocabulary = self.vocabulary
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
@@ -400,15 +397,14 @@ class CometEstimator(Estimator):
                 inputs.append({"image": image, "height": height, "width": width, "vocabulary": vocabulary})
             
             # print("vocabulary:", vocabulary)
-            ori_vocabulary = vocabulary
-            vocabulary = self._merge_vocabulary(vocabulary)
             results = self.san(inputs)
         
-        seg_map = [self._postprocess(res["sem_seg"], ori_vocabulary).unsqueeze(0) for res in results]
+        seg_map = [res["sem_seg"].argmax(dim=0).unsqueeze(0) for res in results]
         pred = torch.cat(seg_map,dim=0) # (B H W)
         
-        for b in range(pred.shape[0]):
-            self.visualize(images[b], pred[b].cpu().numpy(), vocabulary, output_file=f"logs/output_{b}.png")
+        if VISUALIZE:
+            for b in range(pred.shape[0]):
+                self.visualize(images[b], pred[b].cpu().numpy(), vocabulary, output_file=f"logs/output_{b}.png")
 
         labels = self.encoder.prepare_sample(vocabulary)
         label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda()) 
