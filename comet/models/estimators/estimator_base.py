@@ -130,7 +130,7 @@ class Estimator(ModelBase):
         return self.metrics.compute(predictions, targets)
 
     def get_sentence_embedding(
-        self, tokens: torch.Tensor, lengths: torch.Tensor
+        self, tokens: torch.Tensor, lengths: torch.Tensor, pooling=True
     ) -> torch.Tensor:
         """Auxiliar function that extracts sentence embeddings for
             a single sentence.
@@ -172,7 +172,9 @@ class Estimator(ModelBase):
                 encoder_out["mask"],
                 self.encoder.tokenizer.padding_index,
             )
-
+            # print("sentemb",sentemb[0,:])
+            return sentemb, embeddings, encoder_out["mask"], self.encoder.tokenizer.padding_index
+        
         elif self.hparams.pool == "cls":
             sentemb = embeddings[:, 0, :]
 

@@ -49,6 +49,8 @@ from PIL import Image
 
 from san import add_san_config
 from san.data.datasets.register_coco_stuff_164k import COCO_CATEGORIES
+from comet.models.utils import average_pooling, max_pooling, move_to_cpu, move_to_cuda
+
 
 MAX_SEG_LABEL = 200 # 必ず写っている物体数には限りがあるので200にしておく
 VISUALIZE = False
@@ -64,6 +66,28 @@ model_cfg = {
         "model_path": "huggingface:san_vit_large_14.pth",
     },
 }
+
+
+class TransformerEncoder(torch.nn.Module):
+    def __init__(self, input_dim, num_heads, hidden_dim, num_layers, dropout=0.5):
+        super(TransformerEncoder, self).__init__()
+        self.input_dim = input_dim
+        self.num_heads = num_heads
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.dropout = dropout
+
+        self.positional_encoding = torch.nn.Embedding(1000, input_dim)
+        self.encoder_layer = torch.nn.TransformerEncoderLayer(d_model=input_dim, 
+                                                        nhead=num_heads, 
+                                                        dim_feedforward=hidden_dim, 
+                                                        dropout=dropout)
+        self.transformer_encoder = torch.nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
+
+    def forward(self, src, src_key_padding_mask):
+        src = src + self.positional_encoding(torch.arange(src.size(0), device=src.device)).unsqueeze(1)
+        output = self.transformer_encoder(src,src_key_padding_mask=src_key_padding_mask.transpose(0,1)) # TODO: チェック
+        return output
 
 
 def download_model(model_path: str):
@@ -139,9 +163,9 @@ class CometEstimator(Estimator):
             )
 
         input_emb_sz = (
-            self.encoder.output_units * (6+MAX_SEG_LABEL)
+            self.encoder.output_units * 6
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * (6+MAX_SEG_LABEL)
+            else self.encoder.output_units * 2 * 6
         )
 
         self.ff = torch.nn.Sequential(*[
@@ -161,19 +185,18 @@ class CometEstimator(Estimator):
             torch.nn.Sigmoid()
         ])
 
-        self.patch_linear = torch.nn.Linear(1024,768)
+        self.transformer = TransformerEncoder(input_dim=768, num_heads=8, hidden_dim=768, num_layers=3)
 
+        # model_path = model_cfg[BACKBONE]["model_path"]
+        # cfg = setup()
+        # self.san = DefaultTrainer.build_model(cfg)
+        # if model_path.startswith("huggingface:"):
+        #     model_path = download_model(model_path)
+        # print("Loading model from: ", model_path)
+        # DetectionCheckpointer(self.san, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
+        # print("Loaded model from: ", model_path)
 
-        model_path = model_cfg[BACKBONE]["model_path"]
-        cfg = setup()
-        self.san = DefaultTrainer.build_model(cfg)
-        if model_path.startswith("huggingface:"):
-            model_path = download_model(model_path)
-        print("Loading model from: ", model_path)
-        DetectionCheckpointer(self.san, save_dir=cfg.OUTPUT_DIR).resume_or_load(model_path)
-        print("Loaded model from: ", model_path)
-
-        self.vocabulary = self._merge_vocabulary(vocabulary)
+        # self.vocabulary = self._merge_vocabulary(vocabulary)
 
 
 
@@ -354,6 +377,14 @@ class CometEstimator(Estimator):
             return v
         v.save(output_file)
 
+    def masked_global_average_pooling(self, input_tensor, mask):
+        mask = mask.logical_not() # mask[x] = input[x] is not pad
+        mask_expanded = mask.unsqueeze(-1).expand_as(input_tensor).float()
+        input_tensor_masked = input_tensor * mask_expanded
+        num_elements = mask.sum(dim=1,keepdim=True).float() # TODO: チェック
+        output_tensor = input_tensor_masked.sum(dim=1) / num_elements
+        return output_tensor
+
 
     def forward(
         self,
@@ -385,38 +416,49 @@ class CometEstimator(Estimator):
         :return: Dictionary with model outputs to be passed to the loss function.
         """
 
-        images = [cv2.resize(img, dsize=(512, 512)) for img in imgs]
-        self.san.eval()
-        vocabulary = self.vocabulary
-        with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
-            # Apply pre-processing to image.
-            inputs = []
-            for image in images:  # TODO: RGB ? BGR ?
-                height, width = image.shape[:2]
-                image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
-                inputs.append({"image": image, "height": height, "width": width, "vocabulary": vocabulary})
+        # images = [cv2.resize(img, dsize=(512, 512)) for img in imgs]
+        # self.san.eval()
+        # vocabulary = self.vocabulary
+        # with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
+        #     # Apply pre-processing to image.
+        #     inputs = []
+        #     for image in images:  # TODO: RGB ? BGR ?
+        #         height, width = image.shape[:2]
+        #         image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
+        #         inputs.append({"image": image, "height": height, "width": width, "vocabulary": vocabulary})
             
-            # print("vocabulary:", vocabulary)
-            results = self.san(inputs)
+        #     # print("vocabulary:", vocabulary)
+        #     results = self.san(inputs)
         
-        seg_map = [res["sem_seg"].argmax(dim=0).unsqueeze(0) for res in results]
-        pred = torch.cat(seg_map,dim=0) # (B H W)
+        # seg_map = [res["sem_seg"].argmax(dim=0).unsqueeze(0) for res in results]
+        # pred = torch.cat(seg_map,dim=0) # (B H W)
         
-        if VISUALIZE:
-            for b in range(pred.shape[0]):
-                self.visualize(images[b], pred[b].cpu().numpy(), vocabulary, output_file=f"logs/output_{b}.png")
+        # if VISUALIZE:
+        #     for b in range(pred.shape[0]):
+        #         self.visualize(images[b], pred[b].cpu().numpy(), vocabulary, output_file=f"logs/output_{b}.png")
 
-        labels = self.encoder.prepare_sample(vocabulary)
-        label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda()) 
+        # labels = self.encoder.prepare_sample(vocabulary)
+        # label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda()) 
 
-        seg_emb = self.create_embeddings_from_mask(pred, len(vocabulary), label_emb)
+        # seg_emb = self.create_embeddings_from_mask(pred, len(vocabulary), label_emb)
         
         # pred_patch = self.patchify(pred.float())
         # pred_patch = self.patch_linear(pred_patch)
         
-        src_sentemb = self.get_sentence_embedding(src_tokens, src_lengths)
-        mt_sentemb = self.get_sentence_embedding(mt_tokens, mt_lengths)
-        ref_sentemb = self.get_sentence_embedding(ref_tokens, ref_lengths)
+        _, src_sentembs, src_mask, padding_index = self.get_sentence_embedding(src_tokens, src_lengths,pooling=False)
+        _, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
+        _, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)
+
+        src_idx, mt_idx, ref_idx = np.cumsum([s.shape[1] for s in [src_sentembs,mt_sentembs,ref_sentembs]])
+        x = torch.cat([src_sentembs,mt_sentembs,ref_sentembs], dim=1)
+        padding_mask = torch.cat([src_mask, mt_mask, ref_mask], dim=1)
+        padding_mask = padding_mask.logical_not() # invert mask
+        x = self.transformer(x, src_key_padding_mask=padding_mask)
+
+        src_sentemb = self.masked_global_average_pooling(x[:,:src_idx,:], padding_mask[:,:src_idx])
+        mt_sentemb = self.masked_global_average_pooling(x[:,src_idx:mt_idx,:], padding_mask[:,src_idx:mt_idx])
+        ref_sentemb = self.masked_global_average_pooling(x[:,mt_idx:ref_idx,:], padding_mask[:,mt_idx:ref_idx])
+        # assert (src_sentemb_t == src_sentemb).all()
 
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
         diff_src = torch.abs(mt_sentemb - src_sentemb)
@@ -424,8 +466,8 @@ class CometEstimator(Estimator):
         prod_ref = mt_sentemb * ref_sentemb
         prod_src = mt_sentemb * src_sentemb
 
-        mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src \
-                                    = [x.unsqueeze(1) for x in [mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src]]
+        # mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src \
+        #                             = [x.unsqueeze(1) for x in [mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src]]
 
         if (
             not hasattr(
@@ -434,9 +476,9 @@ class CometEstimator(Estimator):
             or self.hparams.switch_prob <= 0.0
         ):
             embedded_sequences = torch.cat(
-                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src,seg_emb), dim=1
+                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
             )
-            embedded_sequences = embedded_sequences.flatten(1) # TODO: 修正
+            # embedded_sequences = embedded_sequences.flatten(1) # TODO: 修正
             score = self.ff(embedded_sequences)
 
             if (alt_tokens is not None) and (alt_lengths is not None):

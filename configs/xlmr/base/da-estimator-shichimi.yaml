@@ -2,11 +2,11 @@ seed: 12
 monitor: pearson
 metric_mode: max
 early_stopping: True
-patience: 1
+patience: 5
 min_delta: 0.0
 save_top_k: 2
 save_weights_only: True
-min_epochs: 1
+min_epochs: 10
 max_epochs: 100
 gradient_clip_val: 1.0
 gpus: 1
