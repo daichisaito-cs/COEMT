@@ -19,7 +19,7 @@ from pytorch_lightning.callbacks import (
     EarlyStopping,
     ModelCheckpoint,
 )
-from pytorch_lightning.loggers import LightningLoggerBase, TensorBoardLogger
+from pytorch_lightning.loggers import LightningLoggerBase, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 
 
@@ -150,14 +150,12 @@ def build_trainer(hparams: Namespace) -> pl.Trainer:
     )
 
     # TestTube Logger Callback
-    tb_logger = TensorBoardLogger(
-        save_dir="experiments/",
-        version="version_" + datetime.now().strftime("%d-%m-%Y--%H-%M-%S"),
-        name="lightning",
-    )
+    wandb_logger = WandbLogger(name="comet",
+                               project="comet",
+                               version="version_" + datetime.now().strftime("%d-%m-%Y--%H-%M-%S"))
 
     # Model Checkpoint Callback
-    ckpt_path = os.path.join("experiments/lightning/", tb_logger.version)
+    ckpt_path = os.path.join("experiments/lightning/", wandb_logger.version)
 
     checkpoint_callback = ModelCheckpoint(
         dirpath=ckpt_path,
@@ -171,7 +169,7 @@ def build_trainer(hparams: Namespace) -> pl.Trainer:
     other_callbacks = [early_stop_callback, checkpoint_callback, TrainReport()]
 
     trainer = pl.Trainer(
-        logger=tb_logger,
+        logger=wandb_logger,
         callbacks=other_callbacks,
         gradient_clip_val=hparams.gradient_clip_val,
         gpus=hparams.gpus,
