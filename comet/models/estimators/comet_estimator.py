@@ -264,6 +264,12 @@ class CometEstimator(Estimator):
         inputs["src_idf"] = get_idf(src_inputs["src_tokens"])
         inputs["mt_idf"] = get_idf(mt_inputs["mt_tokens"])
         inputs["ref_idf"] = get_idf(ref_inputs["ref_tokens"])
+        
+        # print(inputs["src"])
+        one_sample = self.encoder.tokenizer.batch_decode(src_inputs["src_tokens"],src_inputs["src_lengths"])[0]
+        one_sample_idf = inputs["src_idf"][0]
+        print(one_sample)
+        print(one_sample_idf)
 
         if inference:
             return inputs

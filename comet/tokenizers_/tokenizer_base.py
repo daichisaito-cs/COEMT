@@ -81,6 +81,9 @@ class TextEncoderBase(TextEncoder):
         tokens = self.tokenize(sequence)
         vector = [self.stoi.get(token, self.unk_index) for token in tokens]
         return torch.tensor(vector)
+    
+    def decode(self, tokens):
+        return [self.itos.get(int(token.numpy()), "<UNK>") for token in tokens]
 
     def batch_encode(
         self, iterator: Iterator[str], dim: int = 0, **kwargs

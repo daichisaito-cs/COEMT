@@ -14,9 +14,8 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from comet.metrics import RegressionReport
-from comet.models.model_base import ModelBase
+from comet.models.model_base import ModelBase, IdfDataset
 from comet.models.utils import average_pooling, max_pooling, move_to_cpu, move_to_cuda
-
 
 class Estimator(ModelBase):
     """
@@ -216,6 +215,9 @@ class Estimator(ModelBase):
             self.to("cuda")
 
         batch_size = self.hparams.batch_size if batch_size < 1 else batch_size
+        samples = IdfDataset(samples,
+                            tokenize_fn=self.tokenize, 
+                            batch_size=batch_size)
         with torch.no_grad():
             batches = [
                 samples[i : i + batch_size] for i in range(0, len(samples), batch_size)

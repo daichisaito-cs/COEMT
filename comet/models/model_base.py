@@ -500,13 +500,11 @@ class ModelBase(ptl.LightningModule):
             num_workers=self.hparams.loader_workers,
         )
 
-class ShichimiDataset(Dataset):
-    def __init__(self, dataset, img_dir_path,tokenize_fn, batch_size=8):
-        self.dataset = dataset
-        self.img_dir_path = img_dir_path
 
-        # Filter out entries with broken image files
-        self.dataset = [entry for entry in dataset if self.is_image_ok(path.join(img_dir_path, f"{entry['imgid']}.jpg"))]
+
+class IdfDataset(Dataset):
+    def __init__(self, dataset, tokenize_fn, batch_size=8):
+        self.dataset = dataset
         self.tokenize_fn = tokenize_fn
 
         print("Compute idf ...")
@@ -528,7 +526,7 @@ class ShichimiDataset(Dataset):
                 idf.append(self.idf[key])
             idfs.append(idf)
         
-        return torch.Tensor(idf, device=target.device)
+        return torch.Tensor(idfs, device=target.device)
 
 
     def _build_idf(self, batch_size):
@@ -559,6 +557,30 @@ class ShichimiDataset(Dataset):
     
     def _tokenize(self,x):
         return self.tokenize_fn(x).numpy().tolist() # [B, D]
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        data = self.dataset[idx]
+        if isinstance(idx,int):
+            data["idf_fn"] = self.get_idf
+        else:
+            for d in data:
+                d["idf_fn"] = self.get_idf
+
+        return data
+
+
+class ShichimiDataset(IdfDataset):
+    def __init__(self, dataset, img_dir_path,tokenize_fn, batch_size=8):
+        self.dataset = dataset
+        self.img_dir_path = img_dir_path
+        # Filter out entries with broken image files
+        self.dataset = [entry for entry in dataset if self.is_image_ok(path.join(img_dir_path, f"{entry['imgid']}.jpg"))]
+        self.tokenize_fn = tokenize_fn
+
+        super().__init__(self.dataset, tokenize_fn, batch_size)
 
     def __len__(self):
         return len(self.dataset)
