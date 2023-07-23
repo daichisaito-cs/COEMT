@@ -258,14 +258,13 @@ class CometEstimator(Estimator):
         else:
             inputs = {**src_inputs, **mt_inputs, **ref_inputs}
 
-        # i = self.new_processor(sample["src"], images=sample["img"], return_tensors="pt", padding=True)
-        # i = {k : v.cuda() for k,v in i.items() }
-        # o = self.clip_new_model(**i)
+        get_idf = sample["idf_fn"][0]
         inputs["imgs"] = sample["img"]
         inputs["src"] = sample["src"]
-        # inputs["imgs"] = o.image_embeds
+        inputs["src_idf"] = get_idf(src_inputs["src_tokens"])
+        inputs["mt_idf"] = get_idf(mt_inputs["mt_tokens"])
+        inputs["ref_idf"] = get_idf(ref_inputs["ref_tokens"])
 
-        # inputs["imgs"] = sample["img"]
         if inference:
             return inputs
 
@@ -377,11 +376,15 @@ class CometEstimator(Estimator):
             return v
         v.save(output_file)
 
-    def masked_global_average_pooling(self, input_tensor, mask):
+    def masked_global_average_pooling(self, input_tensor, mask, idf=None):
         mask = mask.logical_not() # mask[x] = input[x] is not pad
         mask_expanded = mask.unsqueeze(-1).expand_as(input_tensor).float()
         input_tensor_masked = input_tensor * mask_expanded
         num_elements = mask.sum(dim=1,keepdim=True).float() # TODO: チェック
+        if idf is not None:
+            idf = idf.unsqueeze(-1).expand_as(input_tensor_masked)
+            input_tensor_masked = input_tensor_masked * idf
+    
         output_tensor = input_tensor_masked.sum(dim=1) / num_elements
         return output_tensor
 
@@ -394,6 +397,9 @@ class CometEstimator(Estimator):
         src_lengths: torch.tensor,
         mt_lengths: torch.tensor,
         ref_lengths: torch.tensor,
+        src_idf: torch.tensor,
+        mt_idf: torch.tensor,
+        ref_idf: torch.tensor,
         src: torch.tensor,
         imgs: torch.tensor,
         alt_tokens: torch.tensor = None,
@@ -445,11 +451,15 @@ class CometEstimator(Estimator):
         # pred_patch = self.patchify(pred.float())
         # pred_patch = self.patch_linear(pred_patch)
         
-        src_sentemb, src_sentembs, src_mask, padding_index = self.get_sentence_embedding(src_tokens, src_lengths,pooling=False)
-        mt_sentemb, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
-        ref_sentemb, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)
+        _, src_sentembs, src_mask, padding_index = self.get_sentence_embedding(src_tokens, src_lengths,pooling=False)
+        _, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
+        _, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)
 
         # original comet
+        src_sentemb = self.masked_global_average_pooling(src_sentembs,src_mask.logical_not(),src_idf)
+        mt_sentemb = self.masked_global_average_pooling(mt_sentembs, mt_mask.logical_not(),mt_idf)
+        ref_sentemb = self.masked_global_average_pooling(ref_sentembs, ref_mask.logical_not(), ref_idf)
+
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
         diff_src = torch.abs(mt_sentemb - src_sentemb)
 
@@ -467,9 +477,9 @@ class CometEstimator(Estimator):
         padding_mask = padding_mask.logical_not() # invert mask
         x = self.transformer(x, src_key_padding_mask=padding_mask)
 
-        src_sentemb = self.masked_global_average_pooling(x[:,:src_idx,:], padding_mask[:,:src_idx])
-        mt_sentemb = self.masked_global_average_pooling(x[:,src_idx:mt_idx,:], padding_mask[:,src_idx:mt_idx])
-        ref_sentemb = self.masked_global_average_pooling(x[:,mt_idx:ref_idx,:], padding_mask[:,mt_idx:ref_idx])
+        src_sentemb = self.masked_global_average_pooling(x[:,:src_idx,:], padding_mask[:,:src_idx],src_idf)
+        mt_sentemb = self.masked_global_average_pooling(x[:,src_idx:mt_idx,:], padding_mask[:,src_idx:mt_idx],mt_idf)
+        ref_sentemb = self.masked_global_average_pooling(x[:,mt_idx:ref_idx,:], padding_mask[:,mt_idx:ref_idx],ref_idf)
 
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
         diff_src = torch.abs(mt_sentemb - src_sentemb)

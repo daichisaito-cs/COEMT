@@ -21,6 +21,7 @@ from PIL import Image
 import pytorch_lightning as ptl
 from comet.models.encoders import Encoder, str2encoder
 from comet.schedulers import str2scheduler
+from tqdm import tqdm
 
 
 class ModelBase(ptl.LightningModule):
@@ -448,8 +449,8 @@ class ModelBase(ptl.LightningModule):
         self.train_dataset = self.read_csv(self.hparams.train_path)
         self.val_dataset = self.read_csv(self.hparams.val_path)
 
-        self.train_dataset = ShichimiDataset(self.train_dataset, self.hparams.train_img_dir_path)
-        self.val_dataset = ShichimiDataset(self.val_dataset, self.hparams.val_img_dir_path)
+        self.train_dataset = ShichimiDataset(self.train_dataset, self.hparams.train_img_dir_path, tokenize_fn=self.tokenize, batch_size=self.hparams.batch_size)
+        self.val_dataset = ShichimiDataset(self.val_dataset, self.hparams.val_img_dir_path, tokenize_fn=self.tokenize, batch_size=self.hparams.batch_size)
 
         # Always validate the model with 2k examples from training to control overfit.
         train_subset = np.random.choice(a=len(self.train_dataset), size=2000)
@@ -457,7 +458,11 @@ class ModelBase(ptl.LightningModule):
 
         if self.hparams.test_path:
             self.test_dataset = self.read_csv(self.hparams.test_path)
-            self.test_dataset = ShichimiDataset(self.test_dataset, self.hparams.test_img_dir_path)
+            self.test_dataset = ShichimiDataset(self.test_dataset, self.hparams.test_img_dir_path, tokenize_fn=self.tokenize, batch_size=self.hparams.batch_size)
+
+    def tokenize(self, batch_inputs):
+        tokenized = self.encoder.prepare_sample(batch_inputs)
+        return tokenized["tokens"]
 
     def train_dataloader(self) -> DataLoader:
         """ Function that loads the train set. """
@@ -496,12 +501,64 @@ class ModelBase(ptl.LightningModule):
         )
 
 class ShichimiDataset(Dataset):
-    def __init__(self, dataset, img_dir_path):
+    def __init__(self, dataset, img_dir_path,tokenize_fn, batch_size=8):
         self.dataset = dataset
         self.img_dir_path = img_dir_path
 
         # Filter out entries with broken image files
         self.dataset = [entry for entry in dataset if self.is_image_ok(path.join(img_dir_path, f"{entry['imgid']}.jpg"))]
+        self.tokenize_fn = tokenize_fn
+
+        print("Compute idf ...")
+        self.idf = self._build_idf(batch_size)
+
+    def get_idf(self, target):
+        idfs = []
+        if isinstance(target,str):
+            batch_tokens = self._tokenize([target])
+            tokens = tokens[0]
+        elif isinstance(target, torch.Tensor):
+            batch_tokens = target.numpy().tolist() # [B, L]
+
+        for tokens in batch_tokens:
+            idf = []
+            for token in tokens:
+                key = self._convert_string(token)
+                assert key in self.idf, f"{key} is unknown token"
+                idf.append(self.idf[key])
+            idfs.append(idf)
+        
+        return torch.Tensor(idf, device=target.device)
+
+
+    def _build_idf(self, batch_size):
+        def batchify(data, batch_size):
+            return [data[i:i+batch_size] for i in range(0, len(data), batch_size)]
+        
+        documents = []
+        tokens = []
+        for batch_data in tqdm(batchify(self.dataset, batch_size)):
+            doc = []
+            for key in ["src", "ref", "mt"]:
+                batch_tokens = self._tokenize([data[key] for data in batch_data])
+                for ts in batch_tokens:
+                    doc += [self._convert_string(token) for token in ts]
+            tokens += doc
+            documents.append(set(doc))
+
+        idf = {}
+        for token in tqdm(tokens):
+            if token in idf: continue
+            idf[token] = np.log(len(documents) / sum([1 for doc in documents if token in doc]))
+        
+        return idf
+    
+    def _convert_string(self, x):
+        assert isinstance(x, int)
+        return str(x)
+    
+    def _tokenize(self,x):
+        return self.tokenize_fn(x).numpy().tolist() # [B, D]
 
     def __len__(self):
         return len(self.dataset)
@@ -512,8 +569,9 @@ class ShichimiDataset(Dataset):
         imgid = self.dataset[idx]["imgid"]
         img_name = path.join(self.img_dir_path, f"{imgid}.jpg")
 
-        # Get label from  df
+        # Get label from df
         labels = self.dataset[idx]
+        labels["idf_fn"] = self.get_idf
 
         # print(labels)
 
