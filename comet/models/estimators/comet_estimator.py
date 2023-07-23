@@ -163,9 +163,9 @@ class CometEstimator(Estimator):
             )
 
         input_emb_sz = (
-            self.encoder.output_units * 6
+            self.encoder.output_units * 12
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * 6
+            else self.encoder.output_units * 2 * 12
         )
 
         self.ff = torch.nn.Sequential(*[
@@ -445,10 +445,22 @@ class CometEstimator(Estimator):
         # pred_patch = self.patchify(pred.float())
         # pred_patch = self.patch_linear(pred_patch)
         
-        _, src_sentembs, src_mask, padding_index = self.get_sentence_embedding(src_tokens, src_lengths,pooling=False)
-        _, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
-        _, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)
+        src_sentemb, src_sentembs, src_mask, padding_index = self.get_sentence_embedding(src_tokens, src_lengths,pooling=False)
+        mt_sentemb, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
+        ref_sentemb, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)
 
+        # original comet
+        diff_ref = torch.abs(mt_sentemb - ref_sentemb)
+        diff_src = torch.abs(mt_sentemb - src_sentemb)
+
+        prod_ref = mt_sentemb * ref_sentemb
+        prod_src = mt_sentemb *  src_sentemb
+
+        embedded_sequences = torch.cat(
+            (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
+        )
+
+        # word unit
         src_idx, mt_idx, ref_idx = np.cumsum([s.shape[1] for s in [src_sentembs,mt_sentembs,ref_sentembs]])
         x = torch.cat([src_sentembs,mt_sentembs,ref_sentembs], dim=1)
         padding_mask = torch.cat([src_mask, mt_mask, ref_mask], dim=1)
@@ -458,16 +470,12 @@ class CometEstimator(Estimator):
         src_sentemb = self.masked_global_average_pooling(x[:,:src_idx,:], padding_mask[:,:src_idx])
         mt_sentemb = self.masked_global_average_pooling(x[:,src_idx:mt_idx,:], padding_mask[:,src_idx:mt_idx])
         ref_sentemb = self.masked_global_average_pooling(x[:,mt_idx:ref_idx,:], padding_mask[:,mt_idx:ref_idx])
-        # assert (src_sentemb_t == src_sentemb).all()
 
         diff_ref = torch.abs(mt_sentemb - ref_sentemb)
         diff_src = torch.abs(mt_sentemb - src_sentemb)
 
         prod_ref = mt_sentemb * ref_sentemb
         prod_src = mt_sentemb * src_sentemb
-
-        # mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src \
-        #                             = [x.unsqueeze(1) for x in [mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src]]
 
         if (
             not hasattr(
@@ -476,9 +484,8 @@ class CometEstimator(Estimator):
             or self.hparams.switch_prob <= 0.0
         ):
             embedded_sequences = torch.cat(
-                (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
+                (embedded_sequences, mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
             )
-            # embedded_sequences = embedded_sequences.flatten(1) # TODO: 修正
             score = self.ff(embedded_sequences)
 
             if (alt_tokens is not None) and (alt_lengths is not None):
