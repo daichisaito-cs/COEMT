@@ -163,9 +163,9 @@ class CometEstimator(Estimator):
             )
 
         input_emb_sz = (
-            self.encoder.output_units * 12
+            self.encoder.output_units * 7
             if self.hparams.pool != "cls+avg"
-            else self.encoder.output_units * 2 * 12
+            else self.encoder.output_units * 2 * 7
         )
 
         self.ff = torch.nn.Sequential(*[
@@ -185,7 +185,7 @@ class CometEstimator(Estimator):
             torch.nn.Sigmoid()
         ])
 
-        self.transformer = TransformerEncoder(input_dim=768, num_heads=8, hidden_dim=768, num_layers=3)
+        # self.transformer = TransformerEncoder(input_dim=768, num_heads=8, hidden_dim=768, num_layers=3)
 
         # model_path = model_cfg[BACKBONE]["model_path"]
         # cfg = setup()
@@ -473,25 +473,25 @@ class CometEstimator(Estimator):
         prod_src = mt_sentemb *  src_sentemb
 
         embedded_sequences = torch.cat(
-            (mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
+            (src_sentemb, mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
         )
 
         # word unit
-        src_idx, mt_idx, ref_idx = np.cumsum([s.shape[1] for s in [src_sentembs,mt_sentembs,ref_sentembs]])
-        x = torch.cat([src_sentembs,mt_sentembs,ref_sentembs], dim=1)
-        padding_mask = torch.cat([src_mask, mt_mask, ref_mask], dim=1)
-        padding_mask = padding_mask.logical_not() # invert mask
-        x = self.transformer(x, src_key_padding_mask=padding_mask)
+        # src_idx, mt_idx, ref_idx = np.cumsum([s.shape[1] for s in [src_sentembs,mt_sentembs,ref_sentembs]])
+        # x = torch.cat([src_sentembs,mt_sentembs,ref_sentembs], dim=1)
+        # padding_mask = torch.cat([src_mask, mt_mask, ref_mask], dim=1)
+        # padding_mask = padding_mask.logical_not() # invert mask
+        # x = self.transformer(x, src_key_padding_mask=padding_mask)
 
-        src_sentemb = self.masked_global_average_pooling(x[:,:src_idx,:], padding_mask[:,:src_idx],src_idf)
-        mt_sentemb = self.masked_global_average_pooling(x[:,src_idx:mt_idx,:], padding_mask[:,src_idx:mt_idx],mt_idf)
-        ref_sentemb = self.masked_global_average_pooling(x[:,mt_idx:ref_idx,:], padding_mask[:,mt_idx:ref_idx],ref_idf)
+        # src_sentemb = self.masked_global_average_pooling(x[:,:src_idx,:], padding_mask[:,:src_idx],src_idf)
+        # mt_sentemb = self.masked_global_average_pooling(x[:,src_idx:mt_idx,:], padding_mask[:,src_idx:mt_idx],mt_idf)
+        # ref_sentemb = self.masked_global_average_pooling(x[:,mt_idx:ref_idx,:], padding_mask[:,mt_idx:ref_idx],ref_idf)
 
-        diff_ref = torch.abs(mt_sentemb - ref_sentemb)
-        diff_src = torch.abs(mt_sentemb - src_sentemb)
+        # diff_ref = torch.abs(mt_sentemb - ref_sentemb)
+        # diff_src = torch.abs(mt_sentemb - src_sentemb)
 
-        prod_ref = mt_sentemb * ref_sentemb
-        prod_src = mt_sentemb * src_sentemb
+        # prod_ref = mt_sentemb * ref_sentemb
+        # prod_src = mt_sentemb * src_sentemb
 
         if (
             not hasattr(
@@ -499,9 +499,9 @@ class CometEstimator(Estimator):
             )  # compatability with older checkpoints!
             or self.hparams.switch_prob <= 0.0
         ):
-            embedded_sequences = torch.cat(
-                (embedded_sequences, mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
-            )
+            # embedded_sequences = torch.cat(
+            #     (embedded_sequences, mt_sentemb, ref_sentemb, prod_ref, diff_ref, prod_src, diff_src), dim=1
+            # )
             score = self.ff(embedded_sequences)
 
             if (alt_tokens is not None) and (alt_lengths is not None):

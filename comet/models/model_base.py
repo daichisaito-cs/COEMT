@@ -501,7 +501,7 @@ class ModelBase(ptl.LightningModule):
         )
 
 
-from collections import Counter
+
 class IdfDataset(Dataset):
     def __init__(self, dataset, tokenize_fn, batch_size=8):
         self.dataset = dataset
@@ -550,19 +550,16 @@ class IdfDataset(Dataset):
             for key in ["src", "ref"]:
                 batch_tokens = self._tokenize([data[key] for data in batch_data])
                 for ts in batch_tokens:
-                    doc += [self._convert_string(token) for token in ts]
-                    documents.append(set([self._convert_string(token) for token in ts]))
-
-            tokens += doc
+                    doc = [self._convert_string(token) for token in ts]
+                    documents.append(set(doc))
+                    tokens += doc
 
         idf = {}
         for token in tqdm(tokens):
             if token in idf: continue
-            idf[token] = -np.log(1 + sum([1 for doc in documents if token in doc]) / (1 + len(documents)))
+            idf[token] = -np.log((1 + sum([1 for doc in documents if token in doc])) / (1 + len(documents)))
         self.len_documents = len(documents)
         return idf
-
-
 
 
     def _convert_string(self, x):
@@ -612,9 +609,6 @@ class ShichimiDataset(IdfDataset):
         # print(labels)
 
         # Open image file
-        # from detectron2.data.detection_utils import read_image
-        # img = read_image(img_name, format="RGB")
-
         img = Image.open(img_name).convert("RGB")
 
         labels["img"] = img
