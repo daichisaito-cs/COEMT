@@ -38,34 +38,34 @@ import os
 
 import huggingface_hub
 import torch
-from detectron2.checkpoint import DetectionCheckpointer
-from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog
-from detectron2.engine import DefaultTrainer
-from detectron2.projects.deeplab import add_deeplab_config
-from detectron2.utils.visualizer import Visualizer, random_color
+# from detectron2.checkpoint import DetectionCheckpointer
+# from detectron2.config import get_cfg
+# from detectron2.data import MetadataCatalog
+# from detectron2.engine import DefaultTrainer
+# from detectron2.projects.deeplab import add_deeplab_config
+# from detectron2.utils.visualizer import Visualizer, random_color
 from huggingface_hub import hf_hub_download
 from PIL import Image
 
-from san import add_san_config
-from san.data.datasets.register_coco_stuff_164k import COCO_CATEGORIES
+# from san import add_san_config
+# from san.data.datasets.register_coco_stuff_164k import COCO_CATEGORIES
 from comet.models.utils import average_pooling, max_pooling, move_to_cpu, move_to_cuda
 
 
-MAX_SEG_LABEL = 200 # 必ず写っている物体数には限りがあるので200にしておく
-VISUALIZE = False
+# MAX_SEG_LABEL = 200 # 必ず写っている物体数には限りがあるので200にしておく
+# VISUALIZE = False
 
-BACKBONE = "san_vit_b_16"
-model_cfg = {
-    "san_vit_b_16": {
-        "config_file": "configs/san_clip_vit_res4_coco.yaml",
-        "model_path": "huggingface:san_vit_b_16.pth",
-    },
-    "san_vit_large_16": {
-        "config_file": "configs/san_clip_vit_large_res4_coco.yaml",
-        "model_path": "huggingface:san_vit_large_14.pth",
-    },
-}
+# BACKBONE = "san_vit_b_16"
+# model_cfg = {
+#     "san_vit_b_16": {
+#         "config_file": "configs/san_clip_vit_res4_coco.yaml",
+#         "model_path": "huggingface:san_vit_b_16.pth",
+#     },
+#     "san_vit_large_16": {
+#         "config_file": "configs/san_clip_vit_large_res4_coco.yaml",
+#         "model_path": "huggingface:san_vit_large_14.pth",
+#     },
+# }
 
 
 class TransformerEncoder(torch.nn.Module):
@@ -78,9 +78,9 @@ class TransformerEncoder(torch.nn.Module):
         self.dropout = dropout
 
         self.positional_encoding = torch.nn.Embedding(1000, input_dim)
-        self.encoder_layer = torch.nn.TransformerEncoderLayer(d_model=input_dim, 
-                                                        nhead=num_heads, 
-                                                        dim_feedforward=hidden_dim, 
+        self.encoder_layer = torch.nn.TransformerEncoderLayer(d_model=input_dim,
+                                                        nhead=num_heads,
+                                                        dim_feedforward=hidden_dim,
                                                         dropout=dropout)
         self.transformer_encoder = torch.nn.TransformerEncoder(self.encoder_layer, num_layers=num_layers)
 
@@ -105,18 +105,18 @@ def download_model(model_path: str):
     return model_path
 
 
-def setup(device=None):
-    """
-    Create configs and perform basic setups.
-    """
-    cfg = get_cfg()
-    # for poly lr schedule
-    add_deeplab_config(cfg)
-    add_san_config(cfg)
-    cfg.merge_from_file(model_cfg[BACKBONE]["config_file"])
-    cfg.MODEL.DEVICE = device or "cuda" if torch.cuda.is_available() else "cpu"
-    cfg.freeze()
-    return cfg
+# def setup(device=None):
+#     """
+#     Create configs and perform basic setups.
+#     """
+#     cfg = get_cfg()
+#     # for poly lr schedule
+#     add_deeplab_config(cfg)
+#     add_san_config(cfg)
+#     cfg.merge_from_file(model_cfg[BACKBONE]["config_file"])
+#     cfg.MODEL.DEVICE = device or "cuda" if torch.cuda.is_available() else "cpu"
+#     cfg.freeze()
+#     return cfg
 
 class CometEstimator(Estimator):
     """
@@ -264,7 +264,7 @@ class CometEstimator(Estimator):
         inputs["src_idf"] = get_idf(src_inputs["src_tokens"])
         inputs["mt_idf"] = get_idf(mt_inputs["mt_tokens"])
         inputs["ref_idf"] = get_idf(ref_inputs["ref_tokens"])
-        
+
         # print(inputs["src"])
         one_sample = self.encoder.tokenizer.batch_decode(src_inputs["src_tokens"],src_inputs["src_lengths"])[0]
         one_sample_idf = inputs["src_idf"][0]
@@ -277,110 +277,110 @@ class CometEstimator(Estimator):
         targets = {"score": torch.tensor(sample["score"], dtype=torch.float)}
         return inputs, targets
 
-    def patchify(self, img, patch_size=32):
-        assert len(img.shape) == 4, "4D tensors expected"
-        b, c, h, w = img.shape
-        assert w % patch_size == 0 and h % patch_size == 0
-            
-        unfold = torch.nn.Unfold(kernel_size=patch_size, stride=patch_size)
-        patches = unfold(img)
-        patches = patches.permute(0, 2, 1) # b, c, n
-        return patches
+    # def patchify(self, img, patch_size=32):
+    #     assert len(img.shape) == 4, "4D tensors expected"
+    #     b, c, h, w = img.shape
+    #     assert w % patch_size == 0 and h % patch_size == 0
 
-    def _merge_vocabulary(self, vocabulary: List[str]) -> List[str]:
-        default_voc = [c["name"] for c in COCO_CATEGORIES]
-        return vocabulary + [c for c in default_voc if c not in vocabulary]
+    #     unfold = torch.nn.Unfold(kernel_size=patch_size, stride=patch_size)
+    #     patches = unfold(img)
+    #     patches = patches.permute(0, 2, 1) # b, c, n
+    #     return patches
 
-    def calculate_positional_encoding(self, height, width, dim_model,device):
-        # Positional encoding for 2D images
-        pe = torch.zeros(height, width, dim_model)
-        y_position = torch.arange(0, height).unsqueeze(1)
-        x_position = torch.arange(0, width).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0., dim_model, 2) * -(np.log(10000.0) / dim_model))
+    # def _merge_vocabulary(self, vocabulary: List[str]) -> List[str]:
+    #     default_voc = [c["name"] for c in COCO_CATEGORIES]
+    #     return vocabulary + [c for c in default_voc if c not in vocabulary]
 
-        pe[:, :, 0::2] = torch.sin(y_position * div_term)
-        pe[:, :, 1::2] = torch.cos(x_position * div_term)
-        return pe.to(device)
+    # def calculate_positional_encoding(self, height, width, dim_model,device):
+    #     # Positional encoding for 2D images
+    #     pe = torch.zeros(height, width, dim_model)
+    #     y_position = torch.arange(0, height).unsqueeze(1)
+    #     x_position = torch.arange(0, width).unsqueeze(1)
+    #     div_term = torch.exp(torch.arange(0., dim_model, 2) * -(np.log(10000.0) / dim_model))
 
-    def create_embeddings_from_mask(self, maskes, num_labels, label_emb):
-        from cc_torch import connected_components_labeling
-        B, H, W = maskes.shape
-        batch_embeddings = []
-        
-        # create positional encoding
-        positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
+    #     pe[:, :, 0::2] = torch.sin(y_position * div_term)
+    #     pe[:, :, 1::2] = torch.cos(x_position * div_term)
+    #     return pe.to(device)
 
-        # vocab = self._merge_vocabulary(self.vocabulary)
-        for b in range(B):
-            mask = maskes[b,:,:]
-            # label each connected component with a unique id
-            labelled_mask = connected_components_labeling(mask.to(torch.uint8)) # TODO: uint8でいいんだっけ...?????
-            embeddings = []
-            for i in range(num_labels):
-                indices = (labelled_mask == i)
-                if indices.any():
-                    label = mask[indices][0]
-                    emb = label_emb[label] + positional_encoding[indices].mean(dim=0)
-                    embeddings.append(emb.unsqueeze(0))
-                    # print(vocab[label])
+    # def create_embeddings_from_mask(self, maskes, num_labels, label_emb):
+    #     from cc_torch import connected_components_labeling
+    #     B, H, W = maskes.shape
+    #     batch_embeddings = []
 
-                if len(embeddings) >= MAX_SEG_LABEL:
-                    break
+    #     # create positional encoding
+    #     positional_encoding = self.calculate_positional_encoding(H, W, label_emb.shape[-1], device=label_emb.device)
 
-            embeddings.extend([torch.zeros_like(label_emb[0],device=label_emb.device).unsqueeze(0) for _ in range(MAX_SEG_LABEL - len(embeddings))])
-            embeddings = torch.cat(embeddings, dim=0)
-            batch_embeddings.append(embeddings.unsqueeze(0))
+    #     # vocab = self._merge_vocabulary(self.vocabulary)
+    #     for b in range(B):
+    #         mask = maskes[b,:,:]
+    #         # label each connected component with a unique id
+    #         labelled_mask = connected_components_labeling(mask.to(torch.uint8)) # TODO: uint8でいいんだっけ...?????
+    #         embeddings = []
+    #         for i in range(num_labels):
+    #             indices = (labelled_mask == i)
+    #             if indices.any():
+    #                 label = mask[indices][0]
+    #                 emb = label_emb[label] + positional_encoding[indices].mean(dim=0)
+    #                 embeddings.append(emb.unsqueeze(0))
+    #                 # print(vocab[label])
 
-        batch_embeddings = torch.cat(batch_embeddings, dim=0)
+    #             if len(embeddings) >= MAX_SEG_LABEL:
+    #                 break
 
-        return batch_embeddings
+    #         embeddings.extend([torch.zeros_like(label_emb[0],device=label_emb.device).unsqueeze(0) for _ in range(MAX_SEG_LABEL - len(embeddings))])
+    #         embeddings = torch.cat(embeddings, dim=0)
+    #         batch_embeddings.append(embeddings.unsqueeze(0))
 
-    def visualize(
-        self,
-        image: Image.Image,
-        sem_seg: np.ndarray,
-        vocabulary: List[str],
-        output_file: str = None,
-        mode: str = "overlay",
-    ) -> Union[Image.Image, None]:
-        """
-        Visualize the segmentation result.
-        Args:
-            image (Image.Image): the input image
-            sem_seg (np.ndarray): the segmentation result
-            vocabulary (List[str]): the vocabulary used for the segmentation
-            output_file (str): the output file path
-            mode (str): the visualization mode, can be "overlay" or "mask"
-        Returns:
-            Image.Image: the visualization result. If output_file is not None, return None.
-        """
-        # add temporary metadata
-        # set numpy seed to make sure the colors are the same
-        np.random.seed(0)
-        colors = [random_color(rgb=True, maximum=255) for _ in range(len(vocabulary))]
-        MetadataCatalog.get("_temp").set(stuff_classes=vocabulary, stuff_colors=colors)
-        metadata = MetadataCatalog.get("_temp")
-        if isinstance(image, np.ndarray):
-            image = Image.fromarray(image)
-        
-        image.save(output_file + "_original.png")
-        if mode == "overlay":
-            v = Visualizer(image, metadata)
-            v = v.draw_sem_seg(sem_seg, area_threshold=0).get_image()
-            v = Image.fromarray(v)
-        else:
-            v = np.zeros((image.size[1], image.size[0], 3), dtype=np.uint8)
-            labels, areas = np.unique(sem_seg, return_counts=True)
-            sorted_idxs = np.argsort(-areas).tolist()
-            labels = labels[sorted_idxs]
-            for label in filter(lambda l: l < len(metadata.stuff_classes), labels):
-                v[sem_seg == label] = metadata.stuff_colors[label]
-            v = Image.fromarray(v)
-        # remove temporary metadata
-        MetadataCatalog.remove("_temp")
-        if output_file is None:
-            return v
-        v.save(output_file)
+    #     batch_embeddings = torch.cat(batch_embeddings, dim=0)
+
+    #     return batch_embeddings
+
+    # def visualize(
+    #     self,
+    #     image: Image.Image,
+    #     sem_seg: np.ndarray,
+    #     vocabulary: List[str],
+    #     output_file: str = None,
+    #     mode: str = "overlay",
+    # ) -> Union[Image.Image, None]:
+    #     """
+    #     Visualize the segmentation result.
+    #     Args:
+    #         image (Image.Image): the input image
+    #         sem_seg (np.ndarray): the segmentation result
+    #         vocabulary (List[str]): the vocabulary used for the segmentation
+    #         output_file (str): the output file path
+    #         mode (str): the visualization mode, can be "overlay" or "mask"
+    #     Returns:
+    #         Image.Image: the visualization result. If output_file is not None, return None.
+    #     """
+    #     # add temporary metadata
+    #     # set numpy seed to make sure the colors are the same
+    #     np.random.seed(0)
+    #     colors = [random_color(rgb=True, maximum=255) for _ in range(len(vocabulary))]
+    #     MetadataCatalog.get("_temp").set(stuff_classes=vocabulary, stuff_colors=colors)
+    #     metadata = MetadataCatalog.get("_temp")
+    #     if isinstance(image, np.ndarray):
+    #         image = Image.fromarray(image)
+
+    #     image.save(output_file + "_original.png")
+    #     if mode == "overlay":
+    #         v = Visualizer(image, metadata)
+    #         v = v.draw_sem_seg(sem_seg, area_threshold=0).get_image()
+    #         v = Image.fromarray(v)
+    #     else:
+    #         v = np.zeros((image.size[1], image.size[0], 3), dtype=np.uint8)
+    #         labels, areas = np.unique(sem_seg, return_counts=True)
+    #         sorted_idxs = np.argsort(-areas).tolist()
+    #         labels = labels[sorted_idxs]
+    #         for label in filter(lambda l: l < len(metadata.stuff_classes), labels):
+    #             v[sem_seg == label] = metadata.stuff_colors[label]
+    #         v = Image.fromarray(v)
+    #     # remove temporary metadata
+    #     MetadataCatalog.remove("_temp")
+    #     if output_file is None:
+    #         return v
+    #     v.save(output_file)
 
     def masked_global_average_pooling(self, input_tensor, mask, idf=None):
         mask = mask.logical_not() # mask[x] = input[x] is not pad
@@ -390,7 +390,7 @@ class CometEstimator(Estimator):
         if idf is not None:
             idf = idf.unsqueeze(-1).expand_as(input_tensor_masked)
             input_tensor_masked = input_tensor_masked * idf
-    
+
         output_tensor = input_tensor_masked.sum(dim=1) / num_elements
         return output_tensor
 
@@ -438,25 +438,25 @@ class CometEstimator(Estimator):
         #         height, width = image.shape[:2]
         #         image = torch.as_tensor(image.astype("float32").transpose(2, 0, 1))
         #         inputs.append({"image": image, "height": height, "width": width, "vocabulary": vocabulary})
-            
+
         #     # print("vocabulary:", vocabulary)
         #     results = self.san(inputs)
-        
+
         # seg_map = [res["sem_seg"].argmax(dim=0).unsqueeze(0) for res in results]
         # pred = torch.cat(seg_map,dim=0) # (B H W)
-        
+
         # if VISUALIZE:
         #     for b in range(pred.shape[0]):
         #         self.visualize(images[b], pred[b].cpu().numpy(), vocabulary, output_file=f"logs/output_{b}.png")
 
         # labels = self.encoder.prepare_sample(vocabulary)
-        # label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda()) 
+        # label_emb = self.get_sentence_embedding(labels["tokens"].cuda(), labels["lengths"].cuda())
 
         # seg_emb = self.create_embeddings_from_mask(pred, len(vocabulary), label_emb)
-        
+
         # pred_patch = self.patchify(pred.float())
         # pred_patch = self.patch_linear(pred_patch)
-        
+
         _, src_sentembs, src_mask, padding_index = self.get_sentence_embedding(src_tokens, src_lengths,pooling=False)
         _, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
         _, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)

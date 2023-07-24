@@ -32,8 +32,7 @@ def main(args):
 
     def look_for_image(imgid, img_dir_path):
         img_name = path.join(img_dir_path, f"{imgid}.png")
-        from detectron2.data.detection_utils import read_image
-        img = read_image(img_name, format="RGB")
+        img = Image.open(img_name).convert("RGB")
         return img
 
     def is_image_ok(img_path):
@@ -80,7 +79,32 @@ def main(args):
     #     print("hypo",v)
     #     print("gt",ref,end="\n\n")
 
+
+
+    data = []
+    gt_scores = []
+
+    #use minimum value
+    for imgid, hypo in tqdm(candidates.items()):
+        if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
+            data.append(
+                {
+                    "src": references[imgid][1],
+                    "mt": hypo[0],
+                    "ref": references[imgid][2],
+                    "img": look_for_image(imgids[imgid], img_dir_path),
+                }
+            )
+            gt_scores.append(gts[imgid])
+    # print(gt_scores)
+    _, sys_score_second = model.predict(data,cuda=True)
+
+    min_values = [max(a, b) for a, b in zip(sys_score, sys_score_second)]
+    min_metrics = rep.compute(min_values, gt_scores)
+
+
     print("COMET",metrics)
+    print("COMET-MIN", min_metrics)
 
     # jaspice
     jaspice = JaSPICE(batch_size=16,server_mode=True)

@@ -1,0 +1,1 @@
+{"train_loss_epoch": NaN, "gpu_id: 0/memory.used (MB)": 13795.0, "epoch": 0, "trainer/global_step": 15, "_timestamp": 1690155104.4029214, "_runtime": 25.745867490768433, "_step": 1, "pearson": NaN, "kendall": NaN, "spearman": NaN, "avg_loss": NaN, "train_pearson": NaN, "train_kendall": NaN, "train_spearman": NaN, "train_avg_loss": NaN, "_wandb": {"runtime": 25}}

@@ -501,11 +501,13 @@ class ModelBase(ptl.LightningModule):
         )
 
 
-
+from collections import Counter
 class IdfDataset(Dataset):
     def __init__(self, dataset, tokenize_fn, batch_size=8):
         self.dataset = dataset
         self.tokenize_fn = tokenize_fn
+        self.len_documents = 0
+        self.total_tokens = 0
 
         print("Compute idf ...")
         self.idf = self._build_idf(batch_size)
@@ -519,42 +521,54 @@ class IdfDataset(Dataset):
             batch_tokens = target.numpy().tolist() # [B, L]
 
         for tokens in batch_tokens:
+
             idf = []
             for token in tokens:
                 key = self._convert_string(token)
-                assert key in self.idf, f"{key} is unknown token"
-                idf.append(self.idf[key])
+                # assert key in self.idf, f"{key} is unknown token"
+                # idf.append(self.idf[key])
+                # idf.append(self.idf[key])
+                if 0 <= int(key) and int(key) <= 10:
+                    idf.append(0.0) # If the token is "</s>", assign 0 as the IDF
+                elif key not in self.idf:
+                    idf.append(-np.log(1 / (self.len_documents + 1)))
+                else:
+                    idf.append(self.idf[key])
             idfs.append(idf)
-        
+
         return torch.Tensor(idfs, device=target.device)
 
 
     def _build_idf(self, batch_size):
         def batchify(data, batch_size):
             return [data[i:i+batch_size] for i in range(0, len(data), batch_size)]
-        
+
         documents = []
         tokens = []
         for batch_data in tqdm(batchify(self.dataset, batch_size)):
             doc = []
-            for key in ["src", "ref", "mt"]:
+            for key in ["src", "ref"]:
                 batch_tokens = self._tokenize([data[key] for data in batch_data])
                 for ts in batch_tokens:
                     doc += [self._convert_string(token) for token in ts]
+                    documents.append(set([self._convert_string(token) for token in ts]))
+
             tokens += doc
-            documents.append(set(doc))
 
         idf = {}
         for token in tqdm(tokens):
             if token in idf: continue
-            idf[token] = np.log(len(documents) / sum([1 for doc in documents if token in doc]))
-        
+            idf[token] = -np.log(1 + sum([1 for doc in documents if token in doc]) / (1 + len(documents)))
+        self.len_documents = len(documents)
         return idf
-    
+
+
+
+
     def _convert_string(self, x):
         assert isinstance(x, int)
         return str(x)
-    
+
     def _tokenize(self,x):
         return self.tokenize_fn(x).numpy().tolist() # [B, D]
 
@@ -598,8 +612,10 @@ class ShichimiDataset(IdfDataset):
         # print(labels)
 
         # Open image file
-        from detectron2.data.detection_utils import read_image
-        img = read_image(img_name, format="RGB")
+        # from detectron2.data.detection_utils import read_image
+        # img = read_image(img_name, format="RGB")
+
+        img = Image.open(img_name).convert("RGB")
 
         labels["img"] = img
 
