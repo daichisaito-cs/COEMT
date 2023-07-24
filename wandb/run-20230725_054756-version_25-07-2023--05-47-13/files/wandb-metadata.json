@@ -1,0 +1,169 @@
+{
+    "os": "Linux-5.15.0-76-generic-x86_64-with-glibc2.2.5",
+    "python": "3.8.10",
+    "heartbeatAt": "2023-07-24T20:47:57.852679",
+    "startedAt": "2023-07-24T20:47:56.674270",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "train",
+        "-f",
+        "configs/xlmr/base/da-estimator-shichimi.yaml"
+    ],
+    "state": "running",
+    "program": "comet/cli.py",
+    "codePath": "comet/cli.py",
+    "git": {
+        "remote": "git@github.com:keio-smilab23/COMET.git",
+        "commit": "06ba0005ebb5592c98cc3cadfb92fb8ebef7e740"
+    },
+    "email": "daichi-s@keio.jp",
+    "root": "/home/initial/workspace/COMET",
+    "host": "d32",
+    "username": "initial",
+    "executable": "/home/initial/.pyenv/versions/comet/bin/python",
+    "cpu_count": 16,
+    "cpu_count_logical": 24,
+    "cpu_freq": {
+        "current": 3064.2293750000003,
+        "min": 800.0,
+        "max": 4750.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5100.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5100.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5100.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5100.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 2820.379,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 2146.022,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 5200.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        },
+        {
+            "current": 3200.0,
+            "min": 800.0,
+            "max": 3900.0
+        }
+    ],
+    "disk": {
+        "total": 1876.218734741211,
+        "used": 918.3544845581055
+    },
+    "gpu": "NVIDIA GeForce RTX 3090",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "NVIDIA GeForce RTX 3090",
+            "memory_total": 25411846144
+        }
+    ],
+    "memory": {
+        "total": 62.55406188964844
+    }
+}
