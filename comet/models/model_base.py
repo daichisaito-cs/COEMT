@@ -507,7 +507,6 @@ class IdfDataset(Dataset):
         self.dataset = dataset
         self.tokenize_fn = tokenize_fn
         self.len_documents = 0
-        self.total_tokens = 0
 
         print("Compute idf ...")
         self.idf = self._build_idf(batch_size)

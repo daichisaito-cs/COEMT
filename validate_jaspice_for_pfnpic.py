@@ -51,8 +51,6 @@ def main(args):
     model = load_checkpoint(args.model)
     data = []
     gt_scores = []
-
-
     for imgid, hypo in tqdm(candidates.items()):
         if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
             data.append(
@@ -64,27 +62,12 @@ def main(args):
                 }
             )
             gt_scores.append(gts[imgid])
-    # print(gt_scores)
+
     seg_scores, sys_score = model.predict(data,cuda=True)
     metrics = rep.compute(sys_score, gt_scores)
 
-    # diff_tuple = []
-    # for i, (k,v) in enumerate(candidates.items()):
-    #     diff = abs(sys_score[i] - gt_scores[i] / 5.)
-    #     diff_tuple.append((diff,sys_score[i],gt_scores[i] / 5.,v,references[i]))
-
-    # diff_tuple.sort(reverse=True)
-    # for diff, score, gt, v, ref in diff_tuple[:100]:
-    #     print(f"scores: {score} / gts: {gt} (diff: {diff:.4f})")
-    #     print("hypo",v)
-    #     print("gt",ref,end="\n\n")
-
-
-
+    #second comet
     data = []
-    gt_scores = []
-
-    #use minimum value
     for imgid, hypo in tqdm(candidates.items()):
         if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
             data.append(
@@ -95,16 +78,27 @@ def main(args):
                     "img": look_for_image(imgids[imgid], img_dir_path),
                 }
             )
-            gt_scores.append(gts[imgid])
-    # print(gt_scores)
     _, sys_score_second = model.predict(data,cuda=True)
 
-    min_values = [max(a, b) for a, b in zip(sys_score, sys_score_second)]
-    min_metrics = rep.compute(min_values, gt_scores)
+    #third comet
+    data = []
+    for imgid, hypo in tqdm(candidates.items()):
+        if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
+            data.append(
+                {
+                    "src": references[imgid][2],
+                    "mt": hypo[0],
+                    "ref": references[imgid][0],
+                    "img": look_for_image(imgids[imgid], img_dir_path),
+                }
+            )
+    _, sys_score_third = model.predict(data,cuda=True)
 
+    max_values = [max(a, b, c) for a, b, c in zip(sys_score, sys_score_second, sys_score_third)]
+    max_metrics = rep.compute(max_values, gt_scores)
 
     print("COMET",metrics)
-    print("COMET-MIN", min_metrics)
+    print("COMET-MAX", max_metrics)
 
     # jaspice
     jaspice = JaSPICE(batch_size=16,server_mode=True)
