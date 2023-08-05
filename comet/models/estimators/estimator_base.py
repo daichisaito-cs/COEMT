@@ -12,6 +12,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from tqdm import tqdm
+import numpy as np
 
 from comet.metrics import RegressionReport
 from comet.models.model_base import ModelBase, IdfDataset

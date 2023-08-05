@@ -1,5 +1,5 @@
 import json
-from jaspice.api import JaSPICE
+# from jaspice.api import JaSPICE
 from comet.metrics.regression_metrics import RegressionReport
 from comet.models import load_checkpoint
 import pandas as pd
@@ -8,6 +8,7 @@ import argparse
 from tqdm import tqdm
 from os import path
 from PIL import Image
+import matplotlib.pyplot as plt
 
 def main(args):
     print(args)
@@ -49,6 +50,7 @@ def main(args):
     # mycomet
     rep = RegressionReport()
     model = load_checkpoint(args.model)
+    # "/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--16-39-52/epoch=1-step=791.ckpt"
     data = []
     gt_scores = []
     for imgid, hypo in tqdm(candidates.items()):
@@ -66,51 +68,26 @@ def main(args):
     seg_scores, sys_score = model.predict(data,cuda=True)
     metrics = rep.compute(sys_score, gt_scores)
 
-    #second comet
-    data = []
-    for imgid, hypo in tqdm(candidates.items()):
-        if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
-            data.append(
-                {
-                    "src": references[imgid][1],
-                    "mt": hypo[0],
-                    "ref": references[imgid][2],
-                    "img": look_for_image(imgids[imgid], img_dir_path),
-                }
-            )
-    _, sys_score_second = model.predict(data,cuda=True)
-
-    #third comet
-    data = []
-    for imgid, hypo in tqdm(candidates.items()):
-        if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.png"):
-            data.append(
-                {
-                    "src": references[imgid][2],
-                    "mt": hypo[0],
-                    "ref": references[imgid][0],
-                    "img": look_for_image(imgids[imgid], img_dir_path),
-                }
-            )
-    _, sys_score_third = model.predict(data,cuda=True)
-
-    max_values = [max(a, b, c) for a, b, c in zip(sys_score, sys_score_second, sys_score_third)]
-    max_metrics = rep.compute(max_values, gt_scores)
-
     print("COMET",metrics)
-    print("COMET-MAX", max_metrics)
+    plt.figure()
+    plt.hist(sys_score, bins='auto')
+    plt.savefig("comet_score_samesize.png")
 
+    # plt.figure()
+    # plt.hist(gt_scores, bins='auto')
+    # plt.savefig("gt_score.png")
+   
     # jaspice
-    jaspice = JaSPICE(batch_size=16,server_mode=True)
-    _, scores = jaspice.compute_score(references, candidates)
+    # jaspice = JaSPICE(batch_size=16,server_mode=True)
+    # _, scores = jaspice.compute_score(references, candidates)
     # for i, (k,v) in enumerate(list(candidates.items())[:20]):
     #     print(f"scores: {scores[i]} / gts: {gt_scores[i]}")
     #     print("hypo",v)
     #     print("gt",references[i],end="\n\n")
 
-    metrics = rep.compute(scores, gt_scores)
+    # metrics = rep.compute(scores, gt_scores)
     # metrics = corrcoef(scores,gt_scores)
-    print("JaSPICE", metrics)
+    # print("JaSPICE", metrics)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

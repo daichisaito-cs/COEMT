@@ -1,5 +1,4 @@
 import json
-from jaspice.api import JaSPICE
 from comet.metrics.regression_metrics import RegressionReport
 from comet.models import load_checkpoint
 import pandas as pd
@@ -8,11 +7,13 @@ import argparse
 from tqdm import tqdm
 from os import path
 from PIL import Image
+import time
 
 def main(args):
-    print(args)
+    start_time = time.time()
+    # print(args)
     dataset = pd.read_csv("data/pfnpic.csv")
-    print(dataset)
+    # print(dataset)
     imgids = dataset["imgid"]
     imgid_to_captions = {}
     with open("data/pfnpic.json") as f:
@@ -47,7 +48,8 @@ def main(args):
 
     img_dir_path = "data/pfnpic_images"
     rep = RegressionReport()
-    model = load_checkpoint(args.model)
+    # model = load_checkpoint(args.model)
+    model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--17-21-55/epoch=2-step=1187.ckpt")
 
     img_status = {idx: is_image_ok(f"{img_dir_path}/{imgid}.png") for idx, imgid in enumerate(imgids.values)}
     img_data = {idx: look_for_image(imgid, img_dir_path) if status else None for idx, (imgid, status) in enumerate(zip(imgids.values, img_status.values()))}
@@ -82,6 +84,9 @@ def main(args):
 
     print("COMET", metrics)
     print("COMET-MAX", max_metrics)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    # print(elapsed_time)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

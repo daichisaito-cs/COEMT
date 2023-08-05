@@ -22,7 +22,7 @@ import cv2
 import clip
 
 from typing import List, Union
-from skimage import measure
+# from skimage import measure
 
 import numpy as np
 import torch.nn.functional as F
@@ -169,6 +169,7 @@ class CometEstimator(Estimator):
         self.ff = torch.nn.Sequential(*[
             FeedForward(
                 in_dim=input_emb_sz,
+                out_dim=1,
                 hidden_sizes=self.hparams.hidden_sizes,
                 activations=self.hparams.activations,
                 dropout=self.hparams.dropout,

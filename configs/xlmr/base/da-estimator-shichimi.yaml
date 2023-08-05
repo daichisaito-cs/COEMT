@@ -7,7 +7,7 @@ min_delta: 0.0
 save_top_k: 10
 save_weights_only: True
 min_epochs: 1
-max_epochs: 3
+max_epochs: 10
 gradient_clip_val: 1.0
 gpus: 1
 # precision: 16
@@ -24,6 +24,7 @@ nr_frozen_epochs: 0.4
 scheduler: constant
 
 train_path: data/shichimi_train_da.csv
+# train_path: data/shichimi_train_same_size.csv
 val_path: data/shichimi_val_da.csv
 train_img_dir_path: data/downloaded_images
 val_img_dir_path: data/downloaded_images
