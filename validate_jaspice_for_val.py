@@ -64,14 +64,8 @@ def main():
     seg_scores, sys_score = model.predict(data,cuda=True)
 
     metrics = rep.compute(sys_score, gt_scores)
-    print("test")
-    score_pairs = list(zip(sys_score, gt_scores, data))
-    print(score_pairs[:10])
-    score_pairs = sorted(score_pairs, key=lambda x: abs(x[0] - x[1]), reverse=True)
-    for i in score_pairs[:10]:
-        print(i)
 
-    # print("COMET",metrics)
+    print("COMET",metrics)
     # plt.figure()
     # plt.hist(sys_score, bins='auto')
     # plt.savefig("comet_score_train.png")
