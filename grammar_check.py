@@ -7,11 +7,11 @@ import argparse
 from tqdm import tqdm
 from os import path
 from PIL import Image
-import time
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from janome.tokenizer import Tokenizer
+import numpy as np
 
 def main():
-    start_time = time.time()
     # print(args)
     dataset = pd.read_csv("data/pfnpic.csv")
     # print(dataset)
@@ -25,11 +25,9 @@ def main():
     candidates = {i: [hypo] for i, hypo in enumerate(dataset["mt"])}
     references = {i: imgid_to_captions[str(imgid)] for i, imgid in enumerate(dataset["imgid"])}
     gts = {i: mos for i, mos in enumerate(dataset["score"])}
-    # gt_scores = [gts[k] for k,_ in candidates.items()]
     assert len(candidates) == len(references) == len(dataset)
 
     for imgid in candidates.keys():
-        # print(gts[imgid],candidates[imgid], references[imgid][0])
         assert len(references[imgid]) == 3, len(references[imgid])
 
     def look_for_image(imgid, img_dir_path):
@@ -38,14 +36,12 @@ def main():
         return img
 
     def is_image_ok(img_path):
-        # Try to open the image file
         try:
             img = Image.open(img_path)
             img.verify()
             return True
         except (IOError, SyntaxError) as e:
             return False
-
 
     img_dir_path = "data/pfnpic_images"
     rep = RegressionReport()
@@ -79,12 +75,16 @@ def main():
     ]
 
     t = Tokenizer()
-    
+    smoothie = SmoothingFunction().method2
 
-    for i in data_sets:
-        for j in i:
-            bleu_score = 0.5
-            sys_scores[i][j] += (bleu_score - 1) / 5
+    for i, data in enumerate(data_sets):
+        refs_sp = [[token.surface for token in t.tokenize(row["ref"])] for row in data]
+        mts_sp = [[token.surface for token in t.tokenize(row["mt"])] for row in data]
+        for j in range(len(data)):
+            bleu_score = sentence_bleu([refs_sp[j]], mts_sp[j], smoothing_function=smoothie)
+            if sys_scores[i][j] >= 0.1:
+                if bleu_score <= 0.25:
+                    sys_scores[i][j] -= (1 - bleu_score) / 10
 
     metrics = rep.compute(sys_scores[0], gt_scores)
 
@@ -93,9 +93,6 @@ def main():
 
     print("COMET", metrics)
     print("COMET-MAX", max_metrics)
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    # print(elapsed_time)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
