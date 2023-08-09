@@ -11,6 +11,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from janome.tokenizer import Tokenizer
+from jaspice.api import JaSPICE
 
 def main():
     # print(args)
@@ -46,12 +47,16 @@ def main():
     # mycomet
     rep = RegressionReport()
     # model = load_checkpoint(args.model)
-    model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--17-21-55/epoch=2-step=1187.ckpt")
+    # model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--17-21-55/epoch=2-step=1187.ckpt")
+    model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--05-48-16/epoch=9-step=3959.ckpt")
     data = []
     data2 = []
     gt_scores = []
-
+    flag = True
     for imgid, hypo in tqdm(candidates.items()):
+        if flag:
+            print(len(references[imgid]))
+        flag = False
         if is_image_ok(f"{img_dir_path}/{imgids[imgid]}.jpg"):
             img_data = look_for_image(imgids[imgid], img_dir_path)
             data.append(
@@ -88,7 +93,7 @@ def main():
     #     # print(bleu_score)
     #     if sys_score[j] >= 0.1:
     #         sys_score[j] -= (1 - scaling(bleu_score)) / 10
-    
+
     # refs_sp = [[token.surface for token in t.tokenize(row["ref"])] for row in data2]
     # mts_sp = [[token.surface for token in t.tokenize(row["mt"])] for row in data2]
     # for j in range(len(data)):
@@ -102,5 +107,9 @@ def main():
     metrics = rep.compute(max_values, gt_scores)
 
     print("COMET",metrics)
+
+    # jaspice
+    jaspice = JaSPICE(batch_size=16,server_mode=True)
+    _, scores = jaspice.compute_score(references, candidates)
 if __name__ == "__main__":
     main()

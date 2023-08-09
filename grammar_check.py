@@ -75,15 +75,29 @@ def main():
     ]
 
     t = Tokenizer()
-    smoothie = SmoothingFunction().method2
+    # smoothie = SmoothingFunction().method2
 
+    def ngram_overlap(ref, mt, n=2):
+        # Generate n-grams for the reference sentence
+        ref_ngrams = set([tuple(ref[i:i+n]) for i in range(len(ref)-n+1)])
+        
+        # Generate n-grams for the machine translation sentence
+        mt_ngrams = set([tuple(mt[i:i+n]) for i in range(len(mt)-n+1)])
+        
+        # Calculate the overlap
+        overlap = ref_ngrams.intersection(mt_ngrams)
+        
+        # Return the overlap ratio
+        return len(overlap) / len(ref_ngrams)
+            
     for i, data in enumerate(data_sets):
         refs_sp = [[token.surface for token in t.tokenize(row["ref"])] for row in data]
         mts_sp = [[token.surface for token in t.tokenize(row["mt"])] for row in data]
         for j in range(len(data)):
-            bleu_score = sentence_bleu([refs_sp[j]], mts_sp[j], smoothing_function=smoothie)
+            # bleu_score = sentence_bleu([refs_sp[j]], mts_sp[j], smoothing_function=smoothie)
+            bleu_score = ngram_overlap(refs_sp[j], mts_sp[j])
             if sys_scores[i][j] >= 0.1:
-                if bleu_score <= 0.25:
+                if bleu_score <= 0.4:
                     sys_scores[i][j] -= (1 - bleu_score) / 10
 
     metrics = rep.compute(sys_scores[0], gt_scores)

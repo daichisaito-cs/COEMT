@@ -49,7 +49,8 @@ def main(args):
     img_dir_path = "data/pfnpic_images"
     rep = RegressionReport()
     # model = load_checkpoint(args.model)
-    model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--17-21-55/epoch=2-step=1187.ckpt")
+    # model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_25-07-2023--17-21-55/epoch=2-step=1187.ckpt")
+    model = load_checkpoint("/home/initial/workspace/COMET/experiments/lightning/version_09-08-2023--21-27-42/epoch=2-step=1187.ckpt")
 
     img_status = {idx: is_image_ok(f"{img_dir_path}/{imgid}.png") for idx, imgid in enumerate(imgids.values)}
     img_data = {idx: look_for_image(imgid, img_dir_path) if status else None for idx, (imgid, status) in enumerate(zip(imgids.values, img_status.values()))}

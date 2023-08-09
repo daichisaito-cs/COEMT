@@ -322,7 +322,6 @@ class CometEstimator(Estimator):
         mt_sentemb_org, mt_sentembs, mt_mask, _ = self.get_sentence_embedding(mt_tokens, mt_lengths,pooling=False)
         ref_sentemb_org, ref_sentembs, ref_mask, _ = self.get_sentence_embedding(ref_tokens, ref_lengths,pooling=False)
 
-        # original comet
         src_sentemb = self.masked_global_average_pooling(src_sentembs,src_mask.logical_not(), src_idf)
         mt_sentemb = self.masked_global_average_pooling(mt_sentembs, mt_mask.logical_not(), mt_idf)
         ref_sentemb = self.masked_global_average_pooling(ref_sentembs, ref_mask.logical_not(), ref_idf)

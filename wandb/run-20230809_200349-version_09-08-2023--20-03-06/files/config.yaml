@@ -1,0 +1,187 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.8.10
+    cli_version: 0.15.5
+    framework: huggingface
+    huggingface_version: 3.3.1
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    start_time: 1691579029.496168
+    t:
+      1:
+      - 1
+      - 5
+      - 9
+      - 11
+      - 30
+      - 41
+      - 49
+      - 53
+      - 55
+      - 64
+      2:
+      - 1
+      - 5
+      - 9
+      - 11
+      - 30
+      - 41
+      - 49
+      - 53
+      - 55
+      - 64
+      3:
+      - 7
+      - 13
+      - 14
+      - 23
+      4: 3.8.10
+      5: 0.15.5
+      6: 3.3.1
+      8:
+      - 5
+    m:
+    - 1: trainer/global_step
+      6:
+      - 3
+    - 1: train_loss_step
+      5: 1
+      6:
+      - 1
+    - 1: 'gpu_id: 0/memory\.used (MB)'
+      5: 1
+      6:
+      - 1
+    - 1: epoch
+      5: 1
+      6:
+      - 1
+    - 1: train_loss_epoch
+      5: 1
+      6:
+      - 1
+    - 1: pearson
+      5: 1
+      6:
+      - 1
+    - 1: kendall
+      5: 1
+      6:
+      - 1
+    - 1: spearman
+      5: 1
+      6:
+      - 1
+    - 1: avg_loss
+      5: 1
+      6:
+      - 1
+    - 1: train_pearson
+      5: 1
+      6:
+      - 1
+    - 1: train_kendall
+      5: 1
+      6:
+      - 1
+    - 1: train_spearman
+      5: 1
+      6:
+      - 1
+    - 1: train_avg_loss
+      5: 1
+      6:
+      - 1
+activations:
+  desc: null
+  value: Tanh
+batch_size:
+  desc: null
+  value: 32
+dropout:
+  desc: null
+  value: 0.1
+encoder_learning_rate:
+  desc: null
+  value: 1.0e-05
+encoder_model:
+  desc: null
+  value: XLMR
+final_activation:
+  desc: null
+  value: false
+hidden_sizes:
+  desc: null
+  value: 2304,1152
+keep_embeddings_frozen:
+  desc: null
+  value: false
+layer:
+  desc: null
+  value: mix
+layerwise_decay:
+  desc: null
+  value: 0.95
+learning_rate:
+  desc: null
+  value: 3.0e-05
+load_weights:
+  desc: null
+  value: false
+loader_workers:
+  desc: null
+  value: 4
+loss:
+  desc: null
+  value: mse
+model:
+  desc: null
+  value: CometEstimator
+monitor:
+  desc: null
+  value: pearson
+nr_frozen_epochs:
+  desc: null
+  value: 0.4
+optimizer:
+  desc: null
+  value: Adam
+pool:
+  desc: null
+  value: avg
+pretrained_model:
+  desc: null
+  value: xlmr.base
+scalar_mix_dropout:
+  desc: null
+  value: 0.1
+scheduler:
+  desc: null
+  value: constant
+switch_prob:
+  desc: null
+  value: 0.0
+test_img_dir_path:
+  desc: null
+  value: None
+test_path:
+  desc: null
+  value: None
+train_img_dir_path:
+  desc: null
+  value: data/downloaded_images
+train_path:
+  desc: null
+  value: data/shichimi_train_da.csv
+val_img_dir_path:
+  desc: null
+  value: data/downloaded_images
+val_path:
+  desc: null
+  value: data/shichimi_val_da.csv
+warmup_steps:
+  desc: null
+  value: None
