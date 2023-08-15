@@ -1,4 +1,4 @@
-seed: 13
+seed: 12
 monitor: pearson
 metric_mode: max
 early_stopping: True
@@ -31,8 +31,10 @@ val_img_dir_path: data/downloaded_images
 
 model: CometEstimator
 loss: mse
-encoder_model: XLMR
-pretrained_model: xlmr.base
+# encoder_model: XLMR
+# pretrained_model: xlmr.base
+"encoder_model": "BERT"
+"pretrained_model": "bert-base-multilingual-cased"
 
 layer: mix
 scalar_mix_dropout: 0.1

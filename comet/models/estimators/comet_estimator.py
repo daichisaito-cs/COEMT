@@ -371,7 +371,7 @@ class CometEstimator(Estimator):
                     dim=1,
                 )
                 score = (score + self.ff(embedded_sequences)) / 2
-
+            
             return {"score": score}
 
         if self.training:
